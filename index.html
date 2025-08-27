@@ -469,7 +469,7 @@
                 
                 // 成功率 = (正常 + 未跟踪 + 因卫星方原因失败) / 统计周期规则当组的总计划ID数
                 const validCount = results.filter(result => this.isSuccessForRate(result)).length;
-                return (validCount / planIdCount) * 100;
+                 return parseFloat(parseFloat((validCount / planIdCount) * 100).toFixed(3));
             }
         }
 
@@ -1471,7 +1471,7 @@
                 const labels = stats.map(stat => stat.label);
                 const planCounts = stats.map(stat => stat.count);
                 const failureCounts = stats.map(stat => stat.failureCount);
-                const successRates = stats.map(stat => parseFloat(stat.successRate.toFixed(1)));
+                const successRates = stats.map(stat => parseFloat(stat.successRate.toFixed(3)));
                 
                 // 创建图表
                 const ctx = this.dataChart.getContext('2d');
@@ -1606,7 +1606,7 @@
                 // 计算平均成功率
                 const validRates = stats.filter(stat => stat.count > 0).map(stat => stat.successRate);
                 const avgSuccessRate = validRates.length > 0 
-                    ? (validRates.reduce((sum, rate) => sum + rate, 0) / validRates.length).toFixed(1) 
+                    ? (validRates.reduce((sum, rate) => sum + rate, 0) / validRates.length).toFixed(3) 
                     : 0;
                 this.avgSuccessRate.textContent = `${avgSuccessRate}%`;
             }
@@ -1650,7 +1650,7 @@
                     // 成功率
                     const rateTd = document.createElement('td');
                     rateTd.className = 'px-6 py-4 whitespace-nowrap text-sm text-success';
-                    rateTd.textContent = `${stat.successRate.toFixed(1)}%`;
+                    rateTd.textContent = `${stat.successRate.toFixed(3)}%`;
                     tr.appendChild(rateTd);
                     
                     // 时间范围（明确显示文件时间）
@@ -1791,4 +1791,5 @@
     </script>
 </body>
 </html>
+
 
