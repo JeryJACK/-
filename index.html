@@ -881,7 +881,30 @@
                 }
             }
         }
-
+        document.addEventListener('DOMContentLoaded', function() {
+    // 获取当前系统日期
+    const today = new Date();
+    
+    // 格式化日期为YYYY-MM-DD格式
+    const formatDate = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    
+    // 设置结束日期为今天
+    const endDateInput = document.getElementById('startDate').closest('div').nextElementSibling.querySelector('input');
+    endDateInput.value = formatDate(today);
+    
+    // 计算开始日期为今天的前一天
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    
+    // 设置开始日期为昨天
+    const startDateInput = document.getElementById('startDate');
+    startDateInput.value = formatDate(yesterday);
+});
         // 主应用类
         class SatelliteApp {
             constructor() {
@@ -1791,5 +1814,6 @@
     </script>
 </body>
 </html>
+
 
 
