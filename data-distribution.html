@@ -75,6 +75,12 @@
             .search-highlight {
                 @apply bg-yellow-200 font-medium;
             }
+            .chart-actions {
+                @apply flex gap-2 items-center;
+            }
+            .chart-download-btn {
+                @apply px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition;
+            }
         }
     </style>
 </head>
@@ -228,7 +234,17 @@
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <!-- 客户圈次占比饼图 -->
                 <div class="bg-white rounded-lg p-6 card-shadow">
-                    <h4 class="text-base font-medium mb-4">各客户跟踪圈次占比</h4>
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="text-base font-medium">各客户跟踪圈次占比</h4>
+                        <div class="chart-actions">
+                            <button class="chart-download-btn" data-chart="customerPieChart" data-type="image" title="下载图表图片">
+                                <i class="fa fa-download mr-1"></i>下载图表
+                            </button>
+                            <button class="chart-download-btn" data-chart="customerPieChart" data-type="csv" title="下载图表数据">
+                                <i class="fa fa-table mr-1"></i>下载数据
+                            </button>
+                        </div>
+                    </div>
                     <div class="chart-container">
                         <canvas id="customerPieChart"></canvas>
                         <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="customerPieChartEmpty">
@@ -242,7 +258,17 @@
 
                 <!-- 客户圈次数量条形图 -->
                 <div class="bg-white rounded-lg p-6 card-shadow">
-                    <h4 class="text-base font-medium mb-4">各客户跟踪圈次数量</h4>
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="text-base font-medium">各客户跟踪圈次数量</h4>
+                        <div class="chart-actions">
+                            <button class="chart-download-btn" data-chart="customerBarChart" data-type="image" title="下载图表图片">
+                                <i class="fa fa-download mr-1"></i>下载图表
+                            </button>
+                            <button class="chart-download-btn" data-chart="customerBarChart" data-type="csv" title="下载图表数据">
+                                <i class="fa fa-table mr-1"></i>下载数据
+                            </button>
+                        </div>
+                    </div>
                     <div class="chart-container">
                         <canvas id="customerBarChart"></canvas>
                         <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="customerBarChartEmpty">
@@ -260,7 +286,17 @@
         <section id="stationDistribution" class="mb-8 hidden">
             <h3 class="text-lg font-semibold mb-4">测站数据分布</h3>
             <div class="bg-white rounded-lg p-6 card-shadow">
-                <h4 class="text-base font-medium mb-4">各测站跟踪圈次数量</h4>
+                <div class="flex items-center justify-between mb-4">
+                    <h4 class="text-base font-medium">各测站跟踪圈次数量</h4>
+                    <div class="chart-actions">
+                        <button class="chart-download-btn" data-chart="stationBarChart" data-type="image" title="下载图表图片">
+                            <i class="fa fa-download mr-1"></i>下载图表
+                        </button>
+                        <button class="chart-download-btn" data-chart="stationBarChart" data-type="csv" title="下载图表数据">
+                            <i class="fa fa-table mr-1"></i>下载数据
+                        </button>
+                    </div>
+                </div>
                 <div class="chart-container">
                     <canvas id="stationBarChart"></canvas>
                     <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="stationBarChartEmpty">
@@ -278,7 +314,10 @@
             <h3 class="text-lg font-semibold mb-4">客户-卫星数据分布</h3>
 
             <div class="bg-white rounded-lg p-6 card-shadow mb-6">
-                <h4 class="text-base font-medium mb-3">选择客户</h4>
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-base font-medium">选择客户</h4>
+                    <div class="text-sm text-gray-500">选择后图表会自动更新</div>
+                </div>
 
                 <!-- 下拉多选组件 -->
                 <div class="relative" id="customerSelectContainer">
@@ -308,7 +347,17 @@
             </div>
 
             <div class="bg-white rounded-lg p-6 card-shadow">
-                <h4 class="text-base font-medium mb-4">客户所属卫星跟踪圈次</h4>
+                <div class="flex items-center justify-between mb-4">
+                    <h4 class="text-base font-medium">客户所属卫星跟踪圈次</h4>
+                    <div class="chart-actions">
+                        <button class="chart-download-btn" data-chart="customerSatelliteBarChart" data-type="image" title="下载图表图片">
+                            <i class="fa fa-download mr-1"></i>下载图表
+                        </button>
+                        <button class="chart-download-btn" data-chart="customerSatelliteBarChart" data-type="csv" title="下载图表数据">
+                            <i class="fa fa-table mr-1"></i>下载数据
+                        </button>
+                    </div>
+                </div>
                 <div class="chart-container">
                     <canvas id="customerSatelliteBarChart"></canvas>
                     <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="customerSatelliteChartEmpty">
@@ -495,7 +544,11 @@
 
             destroyChart(chartId) {
                 if (this.charts[chartId]) {
-                    this.charts[chartId].destroy();
+                    try {
+                        this.charts[chartId].destroy();
+                    } catch (e) {
+                        // ignore
+                    }
                     delete this.charts[chartId];
                 }
             }
@@ -503,10 +556,12 @@
             // 生成饼图
             generatePieChart(chartId, title, labels, data) {
                 this.destroyChart(chartId);
-                const ctx = document.getElementById(chartId).getContext('2d');
+                const ctxEl = document.getElementById(chartId);
+                if (!ctxEl) return null;
+                const ctx = ctxEl.getContext('2d');
                 const emptyState = document.getElementById(`${chartId}Empty`);
 
-                const hasData = data.some(v => v > 0);
+                const hasData = data && data.some(v => v > 0);
                 if (!hasData) {
                     if (emptyState) emptyState.classList.remove('hidden');
                     return null;
@@ -567,10 +622,12 @@
             // 生成条形图
             generateBarChart(chartId, title, labels, datasets) {
                 this.destroyChart(chartId);
-                const ctx = document.getElementById(chartId).getContext('2d');
+                const ctxEl = document.getElementById(chartId);
+                if (!ctxEl) return null;
+                const ctx = ctxEl.getContext('2d');
                 const emptyState = document.getElementById(`${chartId}Empty`);
 
-                const hasData = datasets.some(dataset => dataset.data.some(v => v > 0));
+                const hasData = datasets && datasets.some(dataset => dataset.data.some(v => v > 0));
                 if (!hasData) {
                     if (emptyState) emptyState.classList.remove('hidden');
                     return null;
@@ -649,6 +706,72 @@
             }
         }
 
+        // 下载工具函数（通用）
+        function downloadFile(filename, content, mimeType = 'application/octet-stream') {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 500);
+        }
+
+        // 将 Chart.js 实例数据转换为 CSV（含 UTF-8 BOM，方便 Excel 打开）
+        function chartToCSV(chart) {
+            if (!chart || !chart.data) return '';
+
+            const labels = chart.data.labels || [];
+            const datasets = chart.data.datasets || [];
+
+            // Header row: 分组, dataset1, dataset2...
+            const header = ['分组', ...datasets.map(ds => ds.label || '')];
+            const rows = [header];
+
+            for (let i = 0; i < labels.length; i++) {
+                const row = [labels[i]];
+                for (let j = 0; j < datasets.length; j++) {
+                    const v = datasets[j].data && typeof datasets[j].data[i] !== 'undefined' ? datasets[j].data[i] : '';
+                    row.push(v);
+                }
+                rows.push(row);
+            }
+
+            const csvLines = rows.map(cols => cols.map(cell => {
+                if (cell === null || typeof cell === 'undefined') return '';
+                const cellStr = String(cell);
+                if (/[",\n]/.test(cellStr)) {
+                    return `"${cellStr.replace(/"/g, '""')}"`;
+                }
+                return cellStr;
+            }).join(','));
+
+            return '\uFEFF' + csvLines.join('\n');
+        }
+
+        // 将简单的单数据集（如饼图）转换为 CSV (label,value)
+        function simpleChartToCSV(chart) {
+            if (!chart || !chart.data) return '';
+            const labels = chart.data.labels || [];
+            const data = (chart.data.datasets && chart.data.datasets[0] && chart.data.datasets[0].data) || [];
+            const rows = [['分组', '值']];
+            for (let i = 0; i < labels.length; i++) {
+                rows.push([labels[i] || '', data[i] || 0]);
+            }
+            const csvLines = rows.map(cols => cols.map(cell => {
+                const cellStr = String(cell);
+                if (/[",\n]/.test(cellStr)) {
+                    return `"${cellStr.replace(/"/g, '""')}"`;
+                }
+                return cellStr;
+            }).join(','));
+            return '\uFEFF' + csvLines.join('\n');
+        }
+
         // 主应用类
         class DataDistributionApp {
             constructor() {
@@ -674,51 +797,60 @@
                 await this.loadData();
                 this.setDefaultDateTimeRange();
                 this.addDebugButtons();
+                this.bindDownloadButtons(); // bind download handlers
             }
 
             setupEventListeners() {
                 // 应用筛选按钮
-                document.getElementById('applyFilters').addEventListener('click', () => this.applyFilters());
+                const applyBtn = document.getElementById('applyFilters');
+                if (applyBtn) applyBtn.addEventListener('click', () => this.applyFilters());
 
                 // 客户下拉选择相关
-                document.getElementById('customerSelectDropdown').addEventListener('click', (e) => {
+                const cdd = document.getElementById('customerSelectDropdown');
+                if (cdd) cdd.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.toggleCustomerDropdown();
                 });
 
-                document.getElementById('selectAllBtn').addEventListener('click', (e) => {
+                const selectAllBtn = document.getElementById('selectAllBtn');
+                if (selectAllBtn) selectAllBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.selectAllCustomers();
                 });
 
-                document.getElementById('deselectAllBtn').addEventListener('click', (e) => {
+                const deselectAllBtn = document.getElementById('deselectAllBtn');
+                if (deselectAllBtn) deselectAllBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.deselectAllCustomers();
                 });
 
                 // 优化搜索功能 - 添加防抖处理
-                document.getElementById('customerSearchInput').addEventListener('input', this.debounce((e) => {
+                const customerSearchInput = document.getElementById('customerSearchInput');
+                if (customerSearchInput) customerSearchInput.addEventListener('input', this.debounce((e) => {
                     this.filterCustomerOptions(e.target.value);
                 }, 300));
 
                 // 测站偏好客户下拉选择相关
-                document.getElementById('stationPreferenceCustomerSelectDropdown').addEventListener('click', (e) => {
+                const spcdd = document.getElementById('stationPreferenceCustomerSelectDropdown');
+                if (spcdd) spcdd.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.toggleStationPreferenceCustomerDropdown();
                 });
 
-                document.getElementById('stationPreferenceSelectAllBtn').addEventListener('click', (e) => {
+                const spSelAll = document.getElementById('stationPreferenceSelectAllBtn');
+                if (spSelAll) spSelAll.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.selectAllCustomers();
                 });
 
-                document.getElementById('stationPreferenceDeselectAllBtn').addEventListener('click', (e) => {
+                const spDeseAll = document.getElementById('stationPreferenceDeselectAllBtn');
+                if (spDeseAll) spDeseAll.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.deselectAllCustomers();
                 });
 
-                // 优化搜索功能 - 添加防抖处理
-                document.getElementById('stationPreferenceCustomerSearchInput').addEventListener('input', this.debounce((e) => {
+                const spSearch = document.getElementById('stationPreferenceCustomerSearchInput');
+                if (spSearch) spSearch.addEventListener('input', this.debounce((e) => {
                     this.filterStationPreferenceCustomerOptions(e.target.value);
                 }, 300));
 
@@ -728,7 +860,8 @@
                 });
 
                 // 移动端菜单
-                document.getElementById('mobileMenuBtn').addEventListener('click', () => {
+                const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+                if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', () => {
                     document.getElementById('mobileMenu').classList.toggle('hidden');
                 });
             }
@@ -750,8 +883,10 @@
                 startDate.setDate(startDate.getDate() - 7);
 
                 // 格式化日期时间为datetime-local所需格式
-                document.getElementById('startDateTime').value = this.formatDateTimeForInput(startDate);
-                document.getElementById('endDateTime').value = this.formatDateTimeForInput(endDate);
+                const sd = document.getElementById('startDateTime');
+                const ed = document.getElementById('endDateTime');
+                if (sd) sd.value = this.formatDateTimeForInput(startDate);
+                if (ed) ed.value = this.formatDateTimeForInput(endDate);
             }
 
             // 格式化日期时间为input所需格式
@@ -773,9 +908,11 @@
                 if (this.isDropdownOpen) {
                     options.classList.remove('hidden');
                     this.isStationPreferenceDropdownOpen = false;
-                    document.getElementById('stationPreferenceCustomerSelectOptions').classList.add('hidden');
+                    const spOpts = document.getElementById('stationPreferenceCustomerSelectOptions');
+                    if (spOpts) spOpts.classList.add('hidden');
                     // 聚焦搜索框
-                    document.getElementById('customerSearchInput').focus();
+                    const search = document.getElementById('customerSearchInput');
+                    if (search) search.focus();
                 } else {
                     options.classList.add('hidden');
                 }
@@ -789,9 +926,11 @@
                 if (this.isStationPreferenceDropdownOpen) {
                     options.classList.remove('hidden');
                     this.isDropdownOpen = false;
-                    document.getElementById('customerSelectOptions').classList.add('hidden');
+                    const cOpts = document.getElementById('customerSelectOptions');
+                    if (cOpts) cOpts.classList.add('hidden');
                     // 聚焦搜索框
-                    document.getElementById('stationPreferenceCustomerSearchInput').focus();
+                    const search = document.getElementById('stationPreferenceCustomerSearchInput');
+                    if (search) search.focus();
                 } else {
                     options.classList.add('hidden');
                 }
@@ -801,12 +940,14 @@
             closeAllDropdowns() {
                 if (this.isDropdownOpen) {
                     this.isDropdownOpen = false;
-                    document.getElementById('customerSelectOptions').classList.add('hidden');
+                    const cOpts = document.getElementById('customerSelectOptions');
+                    if (cOpts) cOpts.classList.add('hidden');
                 }
 
                 if (this.isStationPreferenceDropdownOpen) {
                     this.isStationPreferenceDropdownOpen = false;
-                    document.getElementById('stationPreferenceCustomerSelectOptions').classList.add('hidden');
+                    const spOpts = document.getElementById('stationPreferenceCustomerSelectOptions');
+                    if (spOpts) spOpts.classList.add('hidden');
                 }
             }
 
@@ -822,12 +963,10 @@
                     const text = customer.toLowerCase();
                     const isMatch = text.includes(term);
 
-                    // 显示或隐藏选项
                     if (isMatch) {
                         option.classList.remove('hidden');
                         visibleCount++;
 
-                        // 如果有搜索词，高亮匹配部分
                         if (term) {
                             const span = option.querySelector('span');
                             const index = text.indexOf(term);
@@ -840,7 +979,6 @@
                                 span.textContent = customer;
                             }
                         } else {
-                            // 没有搜索词时，恢复原始文本
                             const span = option.querySelector('span');
                             span.textContent = customer;
                         }
@@ -849,7 +987,6 @@
                     }
                 });
 
-                // 更新搜索结果计数
                 const resultCountEl = document.getElementById('customerSearchResultCount');
                 if (term) {
                     resultCountEl.textContent = `找到 ${visibleCount} 个匹配结果（共 ${totalCount} 个）`;
@@ -870,12 +1007,10 @@
                     const text = customer.toLowerCase();
                     const isMatch = text.includes(term);
 
-                    // 显示或隐藏选项
                     if (isMatch) {
                         option.classList.remove('hidden');
                         visibleCount++;
 
-                        // 如果有搜索词，高亮匹配部分
                         if (term) {
                             const span = option.querySelector('span');
                             const index = text.indexOf(term);
@@ -888,7 +1023,6 @@
                                 span.textContent = customer;
                             }
                         } else {
-                            // 没有搜索词时，恢复原始文本
                             const span = option.querySelector('span');
                             span.textContent = customer;
                         }
@@ -897,7 +1031,6 @@
                     }
                 });
 
-                // 更新搜索结果计数
                 const resultCountEl = document.getElementById('stationPreferenceSearchResultCount');
                 if (term) {
                     resultCountEl.textContent = `找到 ${visibleCount} 个匹配结果（共 ${totalCount} 个）`;
@@ -908,11 +1041,11 @@
 
             async loadData() {
                 const dbLoading = document.getElementById('dbLoading');
-                dbLoading.classList.remove('hidden');
+                if (dbLoading) dbLoading.classList.remove('hidden');
 
                 try {
                     if (!await this.db.hasData()) {
-                        dbLoading.classList.add('hidden');
+                        if (dbLoading) dbLoading.classList.add('hidden');
                         document.getElementById('noDataAlert').classList.remove('hidden');
                         return;
                     }
@@ -928,19 +1061,25 @@
                     this.data = rawData[0]?.data || [];
 
                     // 显示内容区域
-                    dbLoading.classList.add('hidden');
-                    document.getElementById('filterSection').classList.remove('hidden');
-                    document.getElementById('statsCards').classList.remove('hidden');
-                    document.getElementById('customerDistribution').classList.remove('hidden');
-                    document.getElementById('stationDistribution').classList.remove('hidden');
-                    document.getElementById('customerSatelliteDistribution').classList.remove('hidden');
-                    document.getElementById('customerStationPreference').classList.remove('hidden');
+                    if (dbLoading) dbLoading.classList.add('hidden');
+                    const fs = document.getElementById('filterSection');
+                    if (fs) fs.classList.remove('hidden');
+                    const sc = document.getElementById('statsCards');
+                    if (sc) sc.classList.remove('hidden');
+                    const cd = document.getElementById('customerDistribution');
+                    if (cd) cd.classList.remove('hidden');
+                    const sd = document.getElementById('stationDistribution');
+                    if (sd) sd.classList.remove('hidden');
+                    const csd = document.getElementById('customerSatelliteDistribution');
+                    if (csd) csd.classList.remove('hidden');
+                    const csp = document.getElementById('customerStationPreference');
+                    if (csp) csp.classList.remove('hidden');
 
                     // 初始化客户选项
                     this.initializeCustomerOptions();
 
                 } catch (error) {
-                    dbLoading.classList.add('hidden');
+                    if (dbLoading) dbLoading.classList.add('hidden');
                     console.error('加载数据失败:', error);
                 }
             }
@@ -953,14 +1092,16 @@
                 )].sort();
 
                 // 清空现有选项
-                document.getElementById('customerOptionsList').innerHTML = '';
-                document.getElementById('stationPreferenceCustomerOptionsList').innerHTML = '';
+                const list1 = document.getElementById('customerOptionsList');
+                const list2 = document.getElementById('stationPreferenceCustomerOptionsList');
+                if (list1) list1.innerHTML = '';
+                if (list2) list2.innerHTML = '';
 
                 // 如果没有客户数据
                 if (!this.allCustomers.length) {
-                    document.getElementById('customerOptionsList').innerHTML =
+                    if (list1) list1.innerHTML =
                         '<div class="text-gray-500 italic text-sm p-2">没有可用的客户数据</div>';
-                    document.getElementById('stationPreferenceCustomerOptionsList').innerHTML =
+                    if (list2) list2.innerHTML =
                         '<div class="text-gray-500 italic text-sm p-2">没有可用的客户数据</div>';
                     return;
                 }
@@ -981,7 +1122,7 @@
                         checkbox.checked = !checkbox.checked;
                         this.handleCustomerCheckboxChange(customer, checkbox.checked);
                     });
-                    document.getElementById('customerOptionsList').appendChild(option1);
+                    if (list1) list1.appendChild(option1);
 
                     // 用于测站偏好的客户选项
                     const option2 = document.createElement('div');
@@ -997,17 +1138,17 @@
                         checkbox.checked = !checkbox.checked;
                         this.handleCustomerCheckboxChange(customer, checkbox.checked);
                     });
-                    document.getElementById('stationPreferenceCustomerOptionsList').appendChild(option2);
+                    if (list2) list2.appendChild(option2);
                 });
 
                 // 更新标签显示
                 this.updateCustomerTags();
 
                 // 初始化搜索结果计数
-                document.getElementById('customerSearchResultCount').textContent =
-                    `显示所有 ${this.allCustomers.length} 个客户`;
-                document.getElementById('stationPreferenceSearchResultCount').textContent =
-                    `显示所有 ${this.allCustomers.length} 个客户`;
+                const countEl1 = document.getElementById('customerSearchResultCount');
+                const countEl2 = document.getElementById('stationPreferenceSearchResultCount');
+                if (countEl1) countEl1.textContent = `显示所有 ${this.allCustomers.length} 个客户`;
+                if (countEl2) countEl2.textContent = `显示所有 ${this.allCustomers.length} 个客户`;
             }
 
             // 处理客户复选框变化
@@ -1044,14 +1185,13 @@
                 const tagContainer1 = document.getElementById('selectedCustomerTags');
                 const tagContainer2 = document.getElementById('stationPreferenceSelectedCustomerTags');
 
-                // 清空现有标签
-                tagContainer1.innerHTML = '';
-                tagContainer2.innerHTML = '';
+                if (tagContainer1) tagContainer1.innerHTML = '';
+                if (tagContainer2) tagContainer2.innerHTML = '';
 
                 // 如果没有选中客户
                 if (!this.selectedCustomers.length) {
-                    tagContainer1.innerHTML = '<div class="text-gray-500 italic text-sm">请选择客户</div>';
-                    tagContainer2.innerHTML = '<div class="text-gray-500 italic text-sm">请选择客户</div>';
+                    if (tagContainer1) tagContainer1.innerHTML = '<div class="text-gray-500 italic text-sm">请选择客户</div>';
+                    if (tagContainer2) tagContainer2.innerHTML = '<div class="text-gray-500 italic text-sm">请选择客户</div>';
                     return;
                 }
 
@@ -1070,7 +1210,7 @@
                         e.stopPropagation();
                         this.handleCustomerCheckboxChange(customer, false);
                     });
-                    tagContainer1.appendChild(tag1);
+                    if (tagContainer1) tagContainer1.appendChild(tag1);
 
                     // 测站偏好的标签
                     const tag2 = document.createElement('div');
@@ -1085,7 +1225,7 @@
                         e.stopPropagation();
                         this.handleCustomerCheckboxChange(customer, false);
                     });
-                    tagContainer2.appendChild(tag2);
+                    if (tagContainer2) tagContainer2.appendChild(tag2);
                 });
             }
 
@@ -1132,7 +1272,6 @@
 
                 // 应用筛选 - 按选定时间段进行时间扫描计数
                 this.filteredData = this.data.filter(item => {
-                    // 时间范围筛选
                     const itemDate = new Date(item[FIELD_MAPPING['开始时间']]);
                     return itemDate >= startDateTime && itemDate <= endDateTime;
                 });
@@ -1152,37 +1291,34 @@
 
             // 基于筛选后的数据重新初始化客户选项
             reinitializeCustomerOptionsBasedOnFilteredData() {
-                // 从筛选后的数据中获取客户
                 const filteredCustomers = [...new Set(
                     this.filteredData.map(item => item[FIELD_MAPPING['客户名称']]?.toString().trim()).filter(Boolean)
                 )].sort();
 
-                // 清空现有选项
-                document.getElementById('customerOptionsList').innerHTML = '';
-                document.getElementById('stationPreferenceCustomerOptionsList').innerHTML = '';
+                const list1 = document.getElementById('customerOptionsList');
+                const list2 = document.getElementById('stationPreferenceCustomerOptionsList');
+                if (list1) list1.innerHTML = '';
+                if (list2) list2.innerHTML = '';
 
-                // 如果没有客户数据
                 if (!filteredCustomers.length) {
-                    document.getElementById('customerOptionsList').innerHTML =
+                    if (list1) list1.innerHTML =
                         '<div class="text-gray-500 italic text-sm p-2">没有符合条件的客户数据</div>';
-                    document.getElementById('stationPreferenceCustomerOptionsList').innerHTML =
+                    if (list2) list2.innerHTML =
                         '<div class="text-gray-500 italic text-sm p-2">没有符合条件的客户数据</div>';
 
-                    // 更新搜索结果计数
-                    document.getElementById('customerSearchResultCount').textContent = '没有符合条件的客户数据';
-                    document.getElementById('stationPreferenceSearchResultCount').textContent = '没有符合条件的客户数据';
+                    const cSearch = document.getElementById('customerSearchResultCount');
+                    const spSearch = document.getElementById('stationPreferenceSearchResultCount');
+                    if (cSearch) cSearch.textContent = '没有符合条件的客户数据';
+                    if (spSearch) spSearch.textContent = '没有符合条件的客户数据';
                     return;
                 }
 
-                // 更新所有客户列表
                 this.allCustomers = filteredCustomers;
 
-                // 创建客户选项
                 filteredCustomers.forEach(customer => {
-                    // 用于卫星分布的客户选项
                     const option1 = document.createElement('div');
                     option1.className = 'customer-option p-2 hover:bg-gray-100 rounded cursor-pointer flex items-center';
-                    option1.dataset.customer = customer; // 添加数据属性存储客户名称
+                    option1.dataset.customer = customer;
                     option1.innerHTML = `
                         <input type="checkbox" class="mr-2 customer-checkbox" data-customer="${customer}">
                         <span>${customer}</span>
@@ -1193,12 +1329,11 @@
                         checkbox.checked = !checkbox.checked;
                         this.handleCustomerCheckboxChange(customer, checkbox.checked);
                     });
-                    document.getElementById('customerOptionsList').appendChild(option1);
+                    if (list1) list1.appendChild(option1);
 
-                    // 用于测站偏好的客户选项
                     const option2 = document.createElement('div');
                     option2.className = 'customer-option p-2 hover:bg-gray-100 rounded cursor-pointer flex items-center';
-                    option2.dataset.customer = customer; // 添加数据属性存储客户名称
+                    option2.dataset.customer = customer;
                     option2.innerHTML = `
                         <input type="checkbox" class="mr-2 customer-checkbox" data-customer="${customer}">
                         <span>${customer}</span>
@@ -1209,67 +1344,56 @@
                         checkbox.checked = !checkbox.checked;
                         this.handleCustomerCheckboxChange(customer, checkbox.checked);
                     });
-                    document.getElementById('stationPreferenceCustomerOptionsList').appendChild(option2);
+                    if (list2) list2.appendChild(option2);
                 });
 
-                // 更新搜索结果计数
-                document.getElementById('customerSearchResultCount').textContent =
-                    `显示所有 ${filteredCustomers.length} 个客户`;
-                document.getElementById('stationPreferenceSearchResultCount').textContent =
-                    `显示所有 ${filteredCustomers.length} 个客户`;
+                const cSearch = document.getElementById('customerSearchResultCount');
+                const spSearch = document.getElementById('stationPreferenceSearchResultCount');
+                if (cSearch) cSearch.textContent = `显示所有 ${filteredCustomers.length} 个客户`;
+                if (spSearch) spSearch.textContent = `显示所有 ${filteredCustomers.length} 个客户`;
             }
 
             // 更新统计卡片
             updateStatsCards() {
                 if (!this.filteredData) return;
 
-                // 总圈次
                 const totalCycles = this.filteredData.length;
                 document.getElementById('totalCycles').textContent = totalCycles;
 
-                // 卫星数量
                 const satellites = [...new Set(
                     this.filteredData.map(item => item[FIELD_MAPPING['卫星名称']]?.toString().trim()).filter(Boolean)
                 )];
                 document.getElementById('satelliteCount').textContent = satellites.length;
 
-                // 客户数量
                 const customers = [...new Set(
                     this.filteredData.map(item => item[FIELD_MAPPING['客户名称']]?.toString().trim()).filter(Boolean)
                 )];
                 document.getElementById('customerCount').textContent = customers.length;
 
-                // 测站数量
                 const stations = [...new Set(
                     this.filteredData.map(item => item[FIELD_MAPPING['测站名称']]?.toString().trim()).filter(Boolean)
                 )];
                 document.getElementById('stationCount').textContent = stations.length;
 
-                // 计算一些衍生指标
                 const activeSatellites = this.calculateActiveSatellites();
                 document.getElementById('activeSatellites').textContent = activeSatellites;
 
-                // 简单模拟行业覆盖数据
                 document.getElementById('customerCoverage').textContent = Math.min(5, Math.max(1, Math.floor(customers.length / 3)));
 
-                // 简单模拟测站覆盖率
                 document.getElementById('stationCoverage').textContent = `${Math.min(100, Math.round(stations.length * 5))}%`;
 
-                // 简单模拟环比变化
                 document.getElementById('cyclesChange').textContent = `+${Math.round(Math.random() * 15)}%`;
             }
 
             // 计算活跃卫星数量（有超过5次任务的卫星）
             calculateActiveSatellites() {
                 const satelliteCounts = {};
-
                 this.filteredData.forEach(item => {
                     const satellite = item[FIELD_MAPPING['卫星名称']]?.toString().trim();
                     if (satellite) {
                         satelliteCounts[satellite] = (satelliteCounts[satellite] || 0) + 1;
                     }
                 });
-
                 return Object.values(satelliteCounts).filter(count => count > 5).length;
             }
 
@@ -1280,126 +1404,79 @@
                     return;
                 }
 
-                // 客户圈次占比饼图
                 this.generateCustomerPieChart();
-
-                // 客户圈次数量条形图
                 this.generateCustomerBarChart();
-
-                // 测站圈次数量条形图
                 this.generateStationBarChart();
-
-                // 客户-卫星分布条形图（初始状态可能没有选择客户）
                 this.updateCustomerSatelliteChart();
-
-                // 客户-测站偏好饼图（初始状态可能没有选择客户）
                 this.updateCustomerStationPreferenceCharts();
             }
 
             // 生成客户圈次占比饼图
             generateCustomerPieChart() {
-                // 按客户分组统计
                 const customerCounts = {};
-
                 this.filteredData.forEach(item => {
                     const customer = item[FIELD_MAPPING['客户名称']]?.toString().trim();
-                    if (customer) {
-                        customerCounts[customer] = (customerCounts[customer] || 0) + 1;
-                    }
+                    if (customer) customerCounts[customer] = (customerCounts[customer] || 0) + 1;
                 });
-
-                // 转换为图表数据格式
                 const labels = Object.keys(customerCounts);
                 const data = Object.values(customerCounts);
 
-                // 生成饼图
-                this.chartGenerator.generatePieChart(
-                    'customerPieChart',
-                    '各客户跟踪圈次占比',
-                    labels,
-                    data
-                );
+                this.chartGenerator.generatePieChart('customerPieChart', '各客户跟踪圈次占比', labels, data);
             }
 
             // 生成客户圈次数量条形图
             generateCustomerBarChart() {
-                // 按客户分组统计
                 const customerCounts = {};
-
                 this.filteredData.forEach(item => {
                     const customer = item[FIELD_MAPPING['客户名称']]?.toString().trim();
-                    if (customer) {
-                        customerCounts[customer] = (customerCounts[customer] || 0) + 1;
-                    }
+                    if (customer) customerCounts[customer] = (customerCounts[customer] || 0) + 1;
                 });
 
-                // 排序（按圈次数量降序）
-                const sortedCustomers = Object.keys(customerCounts)
-                    .sort((a, b) => customerCounts[b] - customerCounts[a]);
-
-                // 转换为图表数据格式
+                const sortedCustomers = Object.keys(customerCounts).sort((a, b) => customerCounts[b] - customerCounts[a]);
                 const labels = sortedCustomers;
                 const datasets = [{
                     label: '跟踪圈次数量',
                     data: sortedCustomers.map(customer => customerCounts[customer])
                 }];
 
-                // 生成条形图
-                this.chartGenerator.generateBarChart(
-                    'customerBarChart',
-                    '各客户跟踪圈次数量',
-                    labels,
-                    datasets
-                );
+                this.chartGenerator.generateBarChart('customerBarChart', '各客户跟踪圈次数量', labels, datasets);
             }
 
             // 生成测站圈次数量条形图
             generateStationBarChart() {
-                // 按测站分组统计
                 const stationCounts = {};
-
                 this.filteredData.forEach(item => {
                     const station = item[FIELD_MAPPING['测站名称']]?.toString().trim();
-                    if (station) {
-                        stationCounts[station] = (stationCounts[station] || 0) + 1;
-                    }
+                    if (station) stationCounts[station] = (stationCounts[station] || 0) + 1;
                 });
 
-                // 排序（按圈次数量降序）
-                const sortedStations = Object.keys(stationCounts)
-                    .sort((a, b) => stationCounts[b] - stationCounts[a]);
-
-                // 转换为图表数据格式
+                const sortedStations = Object.keys(stationCounts).sort((a, b) => stationCounts[b] - stationCounts[a]);
                 const labels = sortedStations;
                 const datasets = [{
                     label: '跟踪圈次数量',
                     data: sortedStations.map(station => stationCounts[station])
                 }];
 
-                // 生成条形图
-                this.chartGenerator.generateBarChart(
-                    'stationBarChart',
-                    '各测站跟踪圈次数量',
-                    labels,
-                    datasets
-                );
+                this.chartGenerator.generateBarChart('stationBarChart', '各测站跟踪圈次数量', labels, datasets);
             }
 
             // 更新客户-卫星分布条形图
             updateCustomerSatelliteChart() {
                 if (!this.selectedCustomers.length) {
-                    document.getElementById('customerSatelliteChartEmpty').classList.remove('hidden');
+                    const emptyEl = document.getElementById('customerSatelliteChartEmpty');
+                    if (emptyEl) emptyEl.classList.remove('hidden');
+                    // destroy old chart to avoid stale downloads
+                    this.chartGenerator.destroyChart('customerSatelliteBarChart');
                     return;
                 }
 
-                document.getElementById('customerSatelliteChartEmpty').classList.add('hidden');
+                const emptyEl = document.getElementById('customerSatelliteChartEmpty');
+                if (emptyEl) emptyEl.classList.add('hidden');
 
-                // 获取选中客户的数据
                 const customerData = this.filteredData.filter(item =>
                     this.selectedCustomers.includes(item[FIELD_MAPPING['客户名称']]?.toString().trim())
                 );
 
-                // 按客户和卫星分组统计
                 const customerSatelliteCounts = {};
                 const satellites = new Set();
 
@@ -1408,31 +1485,19 @@
                     const satellite = item[FIELD_MAPPING['卫星名称']]?.toString().trim();
 
                     if (customer && satellite) {
-                        if (!customerSatelliteCounts[customer]) {
-                            customerSatelliteCounts[customer] = {};
-                        }
-                        customerSatelliteCounts[customer][satellite] =
-                            (customerSatelliteCounts[customer][satellite] || 0) + 1;
+                        if (!customerSatelliteCounts[customer]) customerSatelliteCounts[customer] = {};
+                        customerSatelliteCounts[customer][satellite] = (customerSatelliteCounts[customer][satellite] || 0) + 1;
                         satellites.add(satellite);
                     }
                 });
 
-                // 转换为图表数据格式
                 const sortedSatellites = Array.from(satellites).sort();
-                const datasets = this.selectedCustomers.map(customer => ({
+                const datasets = this.selectedCustomers.map((customer, i) => ({
                     label: customer,
-                    data: sortedSatellites.map(satellite =>
-                        customerSatelliteCounts[customer]?.[satellite] || 0
-                    )
+                    data: sortedSatellites.map(satellite => customerSatelliteCounts[customer]?.[satellite] || 0)
                 }));
 
-                // 生成条形图
-                this.chartGenerator.generateBarChart(
-                    'customerSatelliteBarChart',
-                    '客户所属卫星跟踪圈次',
-                    sortedSatellites,
-                    datasets
-                );
+                this.chartGenerator.generateBarChart('customerSatelliteBarChart', '客户所属卫星跟踪圈次', sortedSatellites, datasets);
             }
 
             // 更新客户-测站偏好饼图
@@ -1448,36 +1513,45 @@
                             </div>
                         </div>
                     `;
+                    // destroy previously created stationPreference charts
+                    Object.keys(this.chartGenerator.charts).forEach(id => {
+                        if (id && id.startsWith('stationPreferenceChart-')) this.chartGenerator.destroyChart(id);
+                    });
                     return;
                 }
 
-                // 清空容器
                 container.innerHTML = '';
 
-                // 为每个选中的客户生成一个饼图
                 this.selectedCustomers.forEach((customer, index) => {
-                    // 获取该客户的数据
                     const customerData = this.filteredData.filter(item =>
                         item[FIELD_MAPPING['客户名称']]?.toString().trim() === customer
                     );
 
-                    // 按测站分组统计
                     const stationCounts = {};
                     customerData.forEach(item => {
                         const station = item[FIELD_MAPPING['测站名称']]?.toString().trim();
-                        if (station) {
-                            stationCounts[station] = (stationCounts[station] || 0) + 1;
-                        }
+                        if (station) stationCounts[station] = (stationCounts[station] || 0) + 1;
                     });
 
-                    // 创建图表容器
+                    const chartId = `stationPreferenceChart-${index}`;
+
                     const chartContainer = document.createElement('div');
                     chartContainer.className = 'bg-white rounded-lg p-6 card-shadow';
                     chartContainer.innerHTML = `
-                        <h4 class="text-base font-medium mb-4">${customer} 的测站偏好</h4>
+                        <div class="flex items-center justify-between mb-4">
+                            <h4 class="text-base font-medium">${customer} 的测站偏好</h4>
+                            <div class="chart-actions">
+                                <button class="chart-download-btn" data-chart="${chartId}" data-type="image" title="下载图表图片">
+                                    <i class="fa fa-download mr-1"></i>下载图表
+                                </button>
+                                <button class="chart-download-btn" data-chart="${chartId}" data-type="csv" title="下载图表数据">
+                                    <i class="fa fa-table mr-1"></i>下载数据
+                                </button>
+                            </div>
+                        </div>
                         <div class="chart-container h-full">
-                            <canvas id="stationPreferenceChart-${index}"></canvas>
-                            <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="stationPreferenceChart-${index}Empty">
+                            <canvas id="${chartId}"></canvas>
+                            <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="${chartId}Empty">
                                 <div class="text-center">
                                     <i class="fa fa-pie-chart text-4xl mb-2"></i>
                                     <p>没有符合条件的数据</p>
@@ -1487,17 +1561,10 @@
                     `;
                     container.appendChild(chartContainer);
 
-                    // 转换为图表数据格式
                     const labels = Object.keys(stationCounts);
                     const data = Object.values(stationCounts);
 
-                    // 生成饼图
-                    this.chartGenerator.generatePieChart(
-                        `stationPreferenceChart-${index}`,
-                        `${customer} 的测站偏好`,
-                        labels,
-                        data
-                    );
+                    this.chartGenerator.generatePieChart(chartId, `${customer} 的测站偏好`, labels, data);
                 });
             }
 
@@ -1505,13 +1572,15 @@
             clearAllCharts() {
                 this.chartGenerator.destroyAllCharts();
 
-                // 显示空状态
-                document.getElementById('customerPieChartEmpty').classList.remove('hidden');
-                document.getElementById('customerBarChartEmpty').classList.remove('hidden');
-                document.getElementById('stationBarChartEmpty').classList.remove('hidden');
-                document.getElementById('customerSatelliteChartEmpty').classList.remove('hidden');
+                const cp = document.getElementById('customerPieChartEmpty');
+                const cb = document.getElementById('customerBarChartEmpty');
+                const sb = document.getElementById('stationBarChartEmpty');
+                const cs = document.getElementById('customerSatelliteChartEmpty');
+                if (cp) cp.classList.remove('hidden');
+                if (cb) cb.classList.remove('hidden');
+                if (sb) sb.classList.remove('hidden');
+                if (cs) cs.classList.remove('hidden');
 
-                // 重置统计卡片
                 document.getElementById('totalCycles').textContent = '0';
                 document.getElementById('satelliteCount').textContent = '0';
                 document.getElementById('customerCount').textContent = '0';
@@ -1538,11 +1607,61 @@
 
                 document.body.appendChild(debugBtn);
             }
+
+            // 绑定下载按钮（事件委托）
+            bindDownloadButtons() {
+                document.addEventListener('click', (e) => {
+                    const btn = e.target.closest && e.target.closest('.chart-download-btn');
+                    if (!btn) return;
+
+                    e.stopPropagation();
+
+                    const chartId = btn.getAttribute('data-chart');
+                    const type = btn.getAttribute('data-type');
+
+                    // find chart instance
+                    const chart = this.chartGenerator.charts[chartId];
+                    if (!chart) {
+                        alert('当前图表无数据或尚未生成，请先应用筛选并确保图表已显示再下载。');
+                        return;
+                    }
+
+                    if (type === 'image') {
+                        try {
+                            const imgUrl = chart.toBase64Image();
+                            const a = document.createElement('a');
+                            a.href = imgUrl;
+                            const now = new Date();
+                            const ts = now.toISOString().replace(/[:.]/g, '-');
+                            a.download = `${chartId}-${ts}.png`;
+                            document.body.appendChild(a);
+                            a.click();
+                            setTimeout(() => document.body.removeChild(a), 300);
+                        } catch (err) {
+                            console.error('导出图片失败', err);
+                            alert('导出图片失败，请检查浏览器支持或数据量是否过大。');
+                        }
+                    } else if (type === 'csv') {
+                        try {
+                            // For single-dataset charts (pie) we can use simpleChartToCSV for clearer output,
+                            // otherwise use the general chartToCSV
+                            const isPieOrSingle = chart.config && chart.config.type === 'pie';
+                            const csv = isPieOrSingle ? simpleChartToCSV(chart) : chartToCSV(chart);
+                            const now = new Date();
+                            const ts = now.toISOString().replace(/[:.]/g, '-');
+                            downloadFile(`${chartId}-${ts}.csv`, csv, 'text/csv;charset=utf-8;');
+                        } catch (err) {
+                            console.error('导出 CSV 失败', err);
+                            alert('导出 CSV 失败，请查看控制台错误信息。');
+                        }
+                    }
+                });
+            }
         }
 
         // 初始化应用
         document.addEventListener('DOMContentLoaded', () => {
-            const app = new DataDistributionApp();
+            window.dataDistributionApp = new DataDistributionApp();
         });
     </script>
 </body>
