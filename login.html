@@ -66,51 +66,45 @@
 
     <script>
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            const errorMsg = document.getElementById('errorMessage');
-            const debugInfo = document.getElementById('debugInfo');
-            const debugContent = document.getElementById('debugContent');
-            
-            // 显示调试信息区域
-            debugInfo.classList.remove('hidden');
-            debugContent.textContent = '正在发送登录请求...';
-            
-            try {
-                // 显示API URL用于调试
-                const apiUrl = window.location.origin + '/api/login';
-                debugContent.textContent = `请求URL: ${apiUrl}\n发送数据: ${JSON.stringify({username, password})}`;
-                
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-                
-                // 添加响应状态码到调试信息
-                debugContent.textContent += `\n响应状态: ${response.status} ${response.statusText}`;
-                
-                const data = await response.json();
-                
-                // 显示完整响应数据
-                debugContent.textContent += `\n响应数据: ${JSON.stringify(data)}`;
-                
-                if (data.success) {
-                    localStorage.setItem('token', data.token);
-                    window.location.href = '/admin.html';
-                } else {
-                    errorMsg.querySelector('span').textContent = data.error || '登录失败';
-                    errorMsg.classList.remove('hidden');
-                }
-            } catch (error) {
-                // 显示详细错误信息
-                debugContent.textContent += `\n错误: ${error.message}`;
-                errorMsg.querySelector('span').textContent = '网络错误，请重试: ' + error.message;
-                errorMsg.classList.remove('hidden');
-            }
+    e.preventDefault();
+    
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const errorMsg = document.getElementById('errorMessage');
+    
+    // 清除之前的错误消息
+    errorMsg.classList.add('hidden');
+    
+    try {
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
         });
+        
+        // 无论响应状态如何，先尝试解析JSON
+        let data;
+        try {
+            data = await response.json();
+        } catch (jsonError) {
+            throw new Error('服务器响应格式错误');
+        }
+        
+        if (response.ok && data.success) {
+            // 登录成功，保存token并重定向
+            localStorage.setItem('token', data.token);
+            // 记录登录时间，用于后续检查过期
+            localStorage.setItem('tokenExpiry', Date.now() + 86400000); // 24小时后过期
+            window.location.href = '/admin.html';
+        } else {
+            errorMsg.querySelector('span').textContent = data.error || '登录失败，请检查用户名和密码';
+            errorMsg.classList.remove('hidden');
+        }
+    } catch (error) {
+        errorMsg.querySelector('span').textContent = '登录出错: ' + error.message;
+        errorMsg.classList.remove('hidden');
+    }
+});
     </script>
 </body>
 </html>
