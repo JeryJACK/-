@@ -33,12 +33,7 @@
             </div>
             <div id="importStatus" class="mt-4 hidden"></div>
         </section>
-<!-- 在导入状态区域添加取消按钮 -->
-<div id="importStatus" class="mt-4 hidden">
-    <div class="flex items-center justify-between">
-        <span id="statusMessage"></span>
-        <button id="cancelUpload" class="ml-4 px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50">
-            取消上传
+
         <!-- 数据列表 -->
         <section class="bg-white rounded-lg p-6 shadow mb-8">
             <div class="flex justify-between items-center mb-4">
@@ -275,124 +270,50 @@
         }
 
         // 处理文件上传
-       // 处理文件上传（分片上传版本）
-async function handleFileUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    // 检查文件类型
-    if (!file.name.endsWith('.xlsx')) {
-        showStatus('请上传.xlsx格式的Excel文件', 'error');
-        return;
-    }
-    
-    showStatus('正在解析文件...');
-    
-    try {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
+        async function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            showStatus('正在解析文件...');
+            
             try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                const jsonData = XLSX.utils.sheet_to_json(firstSheet);
-                
-                showStatus(`解析完成，共 ${jsonData.length} 条记录，正在上传...`);
-                
-                // 上传数据到服务器
-                const response = await fetch('/api/import', {  // 确保路径正确
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                    },
-                    body: JSON.stringify({ records: jsonData })
-                });
-                
-                // 检查HTTP响应状态
-                if (!response.ok) {
-                    // 尝试获取错误信息
-                    let errorText = `HTTP错误: ${response.status}`;
+                const reader = new FileReader();
+                reader.onload = async (e) => {
                     try {
-                        const errorData = await response.text();
-                        errorText += ` - ${errorData.substring(0, 100)}`; // 只显示前100个字符
-                    } catch (e) {
-                        errorText += ' - 无法解析错误信息';
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                        
+                        showStatus(`解析完成，共 ${jsonData.length} 条记录，正在上传...`);
+                        
+                        // 上传数据到服务器
+                        const response = await fetch('/api/import', {
+                            method: 'POST',
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                            },
+                            body: JSON.stringify({ records: jsonData })
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            showStatus(`上传成功，导入 ${result.inserted} 条记录`, 'success');
+                            loadData(); // 刷新数据列表
+                        } else {
+                            showStatus(`上传失败: ${result.error}`, 'error');
+                        }
+                    } catch (error) {
+                        showStatus('处理文件失败: ' + error.message, 'error');
                     }
-                    throw new Error(errorText);
-                }
-                
-                // 尝试解析JSON响应
-                let result;
-                try {
-                    result = await response.json();
-                } catch (e) {
-                    throw new Error('服务器返回无效的JSON格式: ' + e.message);
-                }
-                
-                if (result.success) {
-                    showStatus(`上传成功，导入 ${result.inserted} 条记录，共 ${result.total} 条`, 'success');
-                    loadData(); // 刷新数据列表
-                    // 清空文件输入，允许重复上传同一个文件
-                    fileInput.value = '';
-                } else {
-                    showStatus(`上传失败: ${result.error || '未知错误'}`, 'error');
-                }
+                };
+                reader.readAsArrayBuffer(file);
             } catch (error) {
-                showStatus('处理文件失败: ' + error.message, 'error');
-                console.error('文件处理错误:', error);
+                showStatus('上传失败: ' + error.message, 'error');
             }
-        };
-        reader.readAsArrayBuffer(file);
-    } catch (error) {
-        showStatus('上传失败: ' + error.message, 'error');
-        console.error('上传错误:', error);
-    }
-}
-
-// 辅助函数：格式化文件大小显示
-function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
-}
-
-// 添加取消上传功能
-let abortController = null;
-
-// 修改导入API调用部分，添加取消功能
-async function uploadBatch(batch, batchNumber, totalBatches) {
-    // 创建新的AbortController
-    abortController = new AbortController();
-    
-    try {
-        const response = await fetch('/api/import', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({ records: batch }),
-            signal: abortController.signal // 关联信号
-        });
-        
-        // ... 处理响应
-        
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            showStatus('上传已取消', 'info');
-        } else {
-            showStatus(`第 ${batchNumber} 批上传出错: ${error.message}`, 'error');
         }
-    }
-}
-
-// 添加取消按钮事件
-document.getElementById('cancelUpload').addEventListener('click', () => {
-    if (abortController) {
-        abortController.abort();
-    }
-});
 
         // 显示状态消息
         function showStatus(message, type = 'info') {
@@ -496,60 +417,6 @@ document.getElementById('cancelUpload').addEventListener('click', () => {
                 alert('删除失败: ' + error.message);
             }
         };
-        // 检查令牌有效性
-async function validateToken() {
-    const token = localStorage.getItem('token');
-    const expiry = localStorage.getItem('tokenExpiry');
-    
-    // 检查令牌是否存在或已过期
-    if (!token || (expiry && Date.now() > parseInt(expiry))) {
-        logout();
-        return false;
-    }
-    
-    try {
-        // 主动验证令牌
-        const response = await fetch('/api/verify-token', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (!response.ok) {
-            throw new Error('令牌无效');
-        }
-        
-        return true;
-    } catch (error) {
-        console.error('令牌验证失败:', error);
-        logout();
-        return false;
-    }
-}
-
-// 退出登录函数
-function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('tokenExpiry');
-    window.location.href = '/login.html';
-}
-
-// 修改文件上传函数，添加令牌检查
-async function handleFileUpload(e) {
-    // 先检查令牌有效性
-    const isTokenValid = await validateToken();
-    if (!isTokenValid) {
-        showStatus('请先登录', 'error');
-        return;
-    }
-    
-    // 其余代码保持不变...
-}
-
-// 页面加载时验证令牌
-document.addEventListener('DOMContentLoaded', async () => {
-    await validateToken();
-    loadData();
-    setupEventListeners();
-});
     </script>
 </body>
 </html>
