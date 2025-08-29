@@ -1267,136 +1267,43 @@ startDateInput.value = formatDate(sevenDaysAgo);
             }
             
             // 确认字段映射
-async confirmFieldMapping() {
-  // 同前面给你的实现 —— 直接粘贴到 SatelliteApp 类的内部，替换旧的方法体
-  const planIdField = this.planIdField?.value;
-  const startTimeField = this.startTimeField?.value;
-  const taskResultField = this.taskResultField?.value;
-  const taskTypeField = this.taskTypeField ? this.taskTypeField.value : null;
-
-  if (!planIdField || !startTimeField || !taskResultField) {
-    this.showError('请选择所有必填字段：计划ID、开始时间、任务结果状态');
-    return;
-  }
-
-  if (!this.data || !Array.isArray(this.data) || this.data.length === 0) {
-    this.showError('没有可用数据，请先上传并解析 Excel 文件');
-    return;
-  }
-
-  const getValue = (row, key) => {
-    if (!row || !key) return undefined;
-    if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
-    const kTrim = key.trim();
-    if (Object.prototype.hasOwnProperty.call(row, kTrim)) return row[kTrim];
-    const fallbackMap = {
-      '计划ID': ['PlanID', 'planId', 'plan_id', '计划 Id', '计划 id'],
-      '开始时间': ['start_time','StartTime','开始 时间'],
-      '所属客户': ['客户名称','customer'],
-      '卫星名称': ['satellite','卫星 名称'],
-      '测站名称': ['station','测站 名称'],
-      '任务结果状态': ['task_result','result','任务状态'],
-      '任务类型': ['task_type','type','任务类型']
-    };
-    for (const alt of (fallbackMap[key] || [])) {
-      if (Object.prototype.hasOwnProperty.call(row, alt)) return row[alt];
-    }
-    return undefined;
-  };
-
-  try {
-    const sampleRow = this.data[0];
-    const sampleValue = getValue(sampleRow, startTimeField) ?? sampleRow[startTimeField];
-    let testDate = null;
-    if (sampleValue instanceof Date) testDate = sampleValue;
-    else if (typeof sampleValue === 'number') testDate = new Date((sampleValue - 25569) * 86400000);
-    else if (typeof sampleValue === 'string') testDate = new Date(sampleValue);
-    if (!testDate || isNaN(testDate.getTime())) {
-      this.showError('所选的开始时间字段格式无法识别为有效时间，请检查字段或 Excel 数据格式');
-      return;
-    }
-  } catch (err) {
-    console.error('开始时间字段验证失败', err);
-    this.showError('开始时间字段验证失败，请检查数据');
-    return;
-  }
-
-  const records = [];
-  for (const row of this.data) {
-    const planIdVal = getValue(row, planIdField) ?? row[planIdField] ?? null;
-    const rawTimeVal = getValue(row, startTimeField) ?? row[startTimeField] ?? null;
-
-    let isoTime = null;
-    if (rawTimeVal instanceof Date) isoTime = rawTimeVal.toISOString();
-    else if (typeof rawTimeVal === 'number') {
-      try {
-        const dt = new Date((rawTimeVal - 25569) * 86400000);
-        if (!isNaN(dt.getTime())) isoTime = dt.toISOString();
-      } catch (e) { isoTime = null; }
-    } else if (typeof rawTimeVal === 'string' && rawTimeVal.trim()) {
-      const dt = new Date(rawTimeVal.trim());
-      if (!isNaN(dt.getTime())) isoTime = dt.toISOString();
-    }
-
-    const customerVal = getValue(row, FIELD_MAPPING['客户名称']) ?? getValue(row, '所属客户') ?? row['所属客户'] ?? null;
-    const satelliteVal = getValue(row, FIELD_MAPPING['卫星名称']) ?? getValue(row, '卫星名称') ?? row['卫星名称'] ?? null;
-    const stationVal = getValue(row, FIELD_MAPPING['测站名称']) ?? getValue(row, '测站名称') ?? row['测站名称'] ?? null;
-    const taskResultVal = getValue(row, taskResultField) ?? row[taskResultField] ?? null;
-    const taskTypeVal = taskTypeField ? (getValue(row, taskTypeField) ?? row[taskTypeField] ?? null) : null;
-
-    records.push({
-      plan_id: planIdVal !== undefined && planIdVal !== null ? String(planIdVal) : null,
-      start_time: isoTime,
-      customer: customerVal ? String(customerVal) : null,
-      satellite: satelliteVal ? String(satelliteVal) : null,
-      station: stationVal ? String(stationVal) : null,
-      task_result: taskResultVal ? String(taskResultVal) : null,
-      task_type: taskTypeVal ? String(taskTypeVal) : null,
-      raw: row
-    });
-  }
-
-  const apiKey = prompt('请输入 IMPORT_API_KEY（导入到云 DB 所需）:');
-  if (!apiKey) {
-    this.showError('导入已取消：未提供 IMPORT_API_KEY');
-    return;
-  }
-
-  if (this.importSuccess) this.importSuccess.classList.add('hidden');
-  if (this.importError) this.importError.classList.add('hidden');
-  if (document.getElementById('dbLoading')) document.getElementById('dbLoading').classList.remove('hidden');
-
-  try {
-    const resp = await importRecords(records, apiKey);
-
-    if (!resp || resp.error) {
-      console.error('import error response', resp);
-      this.showError('导入失败：' + (resp && resp.error ? resp.error : '未知错误'));
-      return;
-    }
-
-    this.fieldMappingValues = {
-      planIdField,
-      startTimeField,
-      taskResultField,
-      taskTypeField
-    };
-    try { localStorage.setItem('fieldMappingValues', JSON.stringify(this.fieldMappingValues)); } catch (e) { console.warn(e); }
-
-    const inserted = resp.inserted ?? records.length;
-    if (this.importedCount) this.importedCount.textContent = inserted;
-    const uniquePlanIds = new Set(records.map(r => r.plan_id).filter(Boolean));
-    if (this.uniquePlanCount) this.uniquePlanCount.textContent = uniquePlanIds.size;
-    if (this.clearDataBtn) this.clearDataBtn.classList.remove('hidden');
-    const fm = document.getElementById('fieldMapping'); if (fm) fm.classList.add('hidden');
-    this.showSuccess(`导入成功：已发送 ${inserted} 条记录至云数据库`);
-    const dbLoadingEl = document.getElementById('dbLoading'); if (dbLoadingEl) dbLoadingEl.classList.add('hidden');
-  } catch (err) {
-    console.error('导入过程中发生错误', err);
-    this.showError('导入过程中发生错误：' + (err && err.message ? err.message : '未知错误'));
-    const dbLoadingEl = document.getElementById('dbLoading'); if (dbLoadingEl) dbLoadingEl.classList.add('hidden');
-  }
-}
+            async confirmFieldMapping() {
+                const planIdField = this.planIdField.value;
+                const startTimeField = this.startTimeField.value;
+                const taskResultField = this.taskResultField.value;
+                
+                if (!planIdField || !startTimeField || !taskResultField) {
+                    this.showError('请选择所有必填字段');
+                    return;
+                }
+                
+                // 验证时间字段格式（确保是文件时间）
+                if (this.data.length > 0) {
+                    const timeValue = this.data[0][startTimeField];
+                    let testDate;
+                    
+                    if (timeValue instanceof Date) {
+                        testDate = timeValue;
+                    } else if (typeof timeValue === 'string') {
+                        testDate = new Date(timeValue);
+                    } else if (typeof timeValue === 'number') {
+                        // 处理Excel中的日期数字，直接转换为文件时间
+                        testDate = new Date((timeValue - 25569) * 86400000);
+                    }
+                    
+                    if (!testDate || isNaN(testDate.getTime())) {
+                        this.showError('所选的开始时间字段格式无效，请重新选择');
+                        return;
+                    }
+                }
+                
+                // 保存字段映射
+                this.fieldMappingValues = {
+                    planIdField,
+                    startTimeField,
+                    taskResultField
+                };
+                
                 try {
                     // 保存数据到IndexedDB
                     await this.db.saveData(this.data, this.fieldMappingValues, this.cycleEngine.config);
@@ -1909,9 +1816,6 @@ async confirmFieldMapping() {
       </script>
 </body>
 </html>
-
-
-
 
 
 
