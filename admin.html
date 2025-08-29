@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据管理中心</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <header class="bg-white border-b border-gray-200">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-database text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-primary">数据管理中心</h1>
+            </div>
+            <button id="logoutBtn" class="text-gray-600 hover:text-primary transition-colors">
+                <i class="fa fa-sign-out mr-1"></i> 退出登录
+            </button>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6">
+        <!-- 数据导入 -->
+        <section class="mb-8 bg-white rounded-lg p-6 shadow">
+            <h2 class="text-lg font-semibold mb-4">数据导入</h2>
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary cursor-pointer transition-colors" id="dropArea">
+                <i class="fa fa-file-excel-o text-4xl text-gray-400 mb-3"></i>
+                <p class="mb-2">拖放Excel文件到此处，或<span class="text-primary font-medium">点击上传</span></p>
+                <p class="text-sm text-gray-500">支持 .xlsx 格式文件</p>
+                <input type="file" id="fileInput" accept=".xlsx" class="hidden">
+            </div>
+            <div id="importStatus" class="mt-4 hidden"></div>
+        </section>
+
+        <!-- 数据列表 -->
+        <section class="bg-white rounded-lg p-6 shadow mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold">数据列表</h2>
+                <button id="refreshBtn" class="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50">
+                    <i class="fa fa-refresh mr-1"></i> 刷新
+                </button>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead>
+                        <tr>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">计划ID</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">开始时间</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">客户</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">卫星</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任务结果</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- 数据将通过JS动态加载 -->
+                        <tr>
+                            <td colspan="6" class="px-6 py-10 text-center text-gray-500">加载数据中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-4 flex justify-between items-center">
+                <div class="text-sm text-gray-500">显示 1-10 条，共 <span id="totalCount">0</span> 条</div>
+                <div>
+                    <button id="prevPage" class="px-3 py-1 text-sm border border-gray-300 rounded-md mr-2 disabled:opacity-50" disabled>上一页</button>
+                    <button id="nextPage" class="px-3 py-1 text-sm border border-gray-300 rounded-md">下一页</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 编辑数据模态框 -->
+    <div id="editModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-lg p-6 w-full max-w-lg">
+            <h3 class="text-lg font-semibold mb-4">编辑数据</h3>
+            <form id="editForm">
+                <input type="hidden" id="editId">
+                <!-- 表单字段将通过JS动态生成 -->
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">计划ID</label>
+                        <input type="text" id="editPlanId" class="w-full p-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">开始时间</label>
+                        <input type="datetime-local" id="editStartTime" class="w-full p-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">客户</label>
+                        <input type="text" id="editCustomer" class="w-full p-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">卫星</label>
+                        <input type="text" id="editSatellite" class="w-full p-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">测站</label>
+                        <input type="text" id="editStation" class="w-full p-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">任务结果</label>
+                        <input type="text" id="editTaskResult" class="w-full p-2 border border-gray-300 rounded-md">
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-2">
+                    <button type="button" id="cancelEdit" class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50">取消</button>
+                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        success: '#00B42A',
+                        danger: '#F53F3F',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <script>
+        // 检查登录状态
+        if (!localStorage.getItem('token')) {
+            window.location.href = '/login.html';
+        }
+
+        // 全局变量
+        let currentPage = 1;
+        const pageSize = 10;
+
+        // DOM元素
+        const dropArea = document.getElementById('dropArea');
+        const fileInput = document.getElementById('fileInput');
+        const importStatus = document.getElementById('importStatus');
+        const dataTableBody = document.getElementById('dataTableBody');
+        const totalCountEl = document.getElementById('totalCount');
+        const prevPageBtn = document.getElementById('prevPage');
+        const nextPageBtn = document.getElementById('nextPage');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const editModal = document.getElementById('editModal');
+        const editForm = document.getElementById('editForm');
+        const cancelEditBtn = document.getElementById('cancelEdit');
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            setupEventListeners();
+        });
+
+        // 设置事件监听
+        function setupEventListeners() {
+            // 文件上传
+            dropArea.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', handleFileUpload);
+            
+            // 拖放事件
+            dropArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropArea.classList.add('border-primary');
+            });
+            
+            dropArea.addEventListener('dragleave', () => {
+                dropArea.classList.remove('border-primary');
+            });
+            
+            dropArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropArea.classList.remove('border-primary');
+                
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    handleFileUpload(e);
+                }
+            });
+            
+            // 分页按钮
+            prevPageBtn.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    loadData();
+                }
+            });
+            
+            nextPageBtn.addEventListener('click', () => {
+                currentPage++;
+                loadData();
+            });
+            
+            // 刷新按钮
+            refreshBtn.addEventListener('click', loadData);
+            
+            // 退出登录
+            logoutBtn.addEventListener('click', () => {
+                localStorage.removeItem('token');
+                window.location.href = '/login.html';
+            });
+            
+            // 编辑表单
+            cancelEditBtn.addEventListener('click', () => {
+                editModal.classList.add('hidden');
+            });
+            
+            editForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await saveEditedData();
+            });
+        }
+
+        // 加载数据
+        async function loadData() {
+            try {
+                const response = await fetch(`/api/records?page=${currentPage}&pageSize=${pageSize}`, {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    showStatus(data.error, 'error');
+                    return;
+                }
+                
+                renderTable(data.records);
+                totalCountEl.textContent = data.total;
+                
+                // 更新分页按钮状态
+                prevPageBtn.disabled = currentPage === 1;
+                nextPageBtn.disabled = currentPage * pageSize >= data.total;
+            } catch (error) {
+                showStatus('加载数据失败: ' + error.message, 'error');
+            }
+        }
+
+        // 渲染表格
+        function renderTable(records) {
+            if (records.length === 0) {
+                dataTableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">没有数据</td></tr>';
+                return;
+            }
+            
+            dataTableBody.innerHTML = records.map(record => `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap">${record.plan_id || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${record.start_time ? new Date(record.start_time).toLocaleString() : '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${record.customer || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${record.satellite || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${record.task_result || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <button onclick="editData(${record.id})" class="text-primary hover:text-primary/80 mr-3">
+                            <i class="fa fa-pencil"></i>
+                        </button>
+                        <button onclick="deleteData(${record.id})" class="text-danger hover:text-danger/80">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 处理文件上传
+        async function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            showStatus('正在解析文件...');
+            
+            try {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                        
+                        showStatus(`解析完成，共 ${jsonData.length} 条记录，正在上传...`);
+                        
+                        // 上传数据到服务器
+                        const response = await fetch('/api/import', {
+                            method: 'POST',
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                            },
+                            body: JSON.stringify({ records: jsonData })
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            showStatus(`上传成功，导入 ${result.inserted} 条记录`, 'success');
+                            loadData(); // 刷新数据列表
+                        } else {
+                            showStatus(`上传失败: ${result.error}`, 'error');
+                        }
+                    } catch (error) {
+                        showStatus('处理文件失败: ' + error.message, 'error');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } catch (error) {
+                showStatus('上传失败: ' + error.message, 'error');
+            }
+        }
+
+        // 显示状态消息
+        function showStatus(message, type = 'info') {
+            importStatus.textContent = message;
+            importStatus.className = 'mt-4 p-3 rounded-lg flex items-center';
+            
+            if (type === 'success') {
+                importStatus.classList.add('bg-success/10', 'text-success');
+            } else if (type === 'error') {
+                importStatus.classList.add('bg-danger/10', 'text-danger');
+            } else {
+                importStatus.classList.add('bg-primary/10', 'text-primary');
+            }
+            
+            importStatus.classList.remove('hidden');
+        }
+
+        // 编辑数据
+        window.editData = async (id) => {
+            try {
+                const response = await fetch(`/api/records/${id}`, {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                
+                // 填充表单
+                document.getElementById('editId').value = data.id;
+                document.getElementById('editPlanId').value = data.plan_id || '';
+                document.getElementById('editStartTime').value = data.start_time ? new Date(data.start_time).toISOString().slice(0, 16) : '';
+                document.getElementById('editCustomer').value = data.customer || '';
+                document.getElementById('editSatellite').value = data.satellite || '';
+                document.getElementById('editStation').value = data.station || '';
+                document.getElementById('editTaskResult').value = data.task_result || '';
+                
+                // 显示模态框
+                editModal.classList.remove('hidden');
+            } catch (error) {
+                alert('加载数据失败: ' + error.message);
+            }
+        };
+
+        // 保存编辑的数据
+        async function saveEditedData() {
+            const id = document.getElementById('editId').value;
+            const data = {
+                plan_id: document.getElementById('editPlanId').value,
+                start_time: document.getElementById('editStartTime').value,
+                customer: document.getElementById('editCustomer').value,
+                satellite: document.getElementById('editSatellite').value,
+                station: document.getElementById('editStation').value,
+                task_result: document.getElementById('editTaskResult').value
+            };
+            
+            try {
+                const response = await fetch(`/api/records/${id}`, {
+                    method: 'PUT',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    editModal.classList.add('hidden');
+                    loadData(); // 刷新数据列表
+                } else {
+                    alert(`保存失败: ${result.error}`);
+                }
+            } catch (error) {
+                alert('保存失败: ' + error.message);
+            }
+        }
+
+        // 删除数据
+        window.deleteData = async (id) => {
+            if (!confirm('确定要删除这条记录吗？')) return;
+            
+            try {
+                const response = await fetch(`/api/records/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    loadData(); // 刷新数据列表
+                } else {
+                    alert(`删除失败: ${result.error}`);
+                }
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+            }
+        };
+    </script>
+</body>
+</html>
