@@ -881,30 +881,32 @@
                 }
             }
         }
-        document.addEventListener('DOMContentLoaded', function() {
-    // 获取当前系统日期
-    const today = new Date();
-    
-    // 格式化日期为YYYY-MM-DD格式
-    const formatDate = (date) => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    };
-    
-    // 设置结束日期为今天
-    const endDateInput = document.getElementById('startDate').closest('div').nextElementSibling.querySelector('input');
-    endDateInput.value = formatDate(today);
-    
-    // 计算开始日期为今天的前7天
-const sevenDaysAgo = new Date(today);
-sevenDaysAgo.setDate(today.getDate() - 7);  // 将-1改为-7
 
-// 设置开始日期为7天前
-const startDateInput = document.getElementById('startDate');
-startDateInput.value = formatDate(sevenDaysAgo);
-});
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取当前系统日期
+            const today = new Date();
+            
+            // 格式化日期为YYYY-MM-DD格式
+            const formatDate = (date) => {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+            
+            // 设置结束日期为今天
+            const endDateInput = document.getElementById('startDate').closest('div').nextElementSibling.querySelector('input');
+            endDateInput.value = formatDate(today);
+            
+            // 计算开始日期为今天的前7天
+            const sevenDaysAgo = new Date(today);
+            sevenDaysAgo.setDate(today.getDate() - 7);
+            
+            // 设置开始日期为7天前
+            const startDateInput = document.getElementById('startDate');
+            startDateInput.value = formatDate(sevenDaysAgo);
+        });
+
         // 主应用类
         class SatelliteApp {
             constructor() {
@@ -1359,6 +1361,51 @@ startDateInput.value = formatDate(sevenDaysAgo);
                     this.showError('清除数据失败: ' + error.message);
                 }
             }
+
+            // 将 date input 字符串解析为本地 Date（time 部分可指定）
+            parseDateInputToLocal(dateStr, hour = 0, minute = 0, second = 0, ms = 0) {
+                if (!dateStr) return null;
+                // dateStr 格式为 YYYY-MM-DD
+                const parts = dateStr.split('-').map(Number);
+                const year = parts[0], month = parts[1] - 1, day = parts[2];
+                return new Date(year, month, day, hour, minute, second, ms);
+            }
+
+            // 根据 groupType 和输入的 start/end 日期字符串，计算基于周期配置的严格文件时间范围（start inclusive, end inclusive）
+            // 规则：把输入的 start/end 日期映射到对应周期的起始/结束：start -> 对应周期的 rangeStart；end -> 对应周期的 rangeEnd - 1ms
+            computeDateRangeForGroup(groupType, startDateStr, endDateStr) {
+                let startBound = null;
+                let endBound = null;
+
+                // Helper: make a midday Date for given yyyy-mm-dd to ensure it falls within the intended group's bucket
+                const makeMidday = (dateStr) => {
+                    if (!dateStr) return null;
+                    const parts = dateStr.split('-').map(Number);
+                    return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0); // 12:00 local time
+                };
+
+                try {
+                    if (startDateStr) {
+                        const midStart = makeMidday(startDateStr);
+                        const gStart = this.cycleEngine.getGroup(midStart, groupType);
+                        startBound = gStart.rangeStart;
+                    }
+
+                    if (endDateStr) {
+                        const midEnd = makeMidday(endDateStr);
+                        const gEnd = this.cycleEngine.getGroup(midEnd, groupType);
+                        // inclusive end bound: group rangeEnd - 1ms so comparisons like date <= endBound work
+                        endBound = new Date(gEnd.rangeEnd.getTime() - 1);
+                    }
+                } catch (err) {
+                    console.warn('计算日期范围失败，回退到基于本地日历的默认解析', err);
+                    // 退回：按本地午夜/23:59:59.999解析
+                    if (startDateStr) startBound = this.parseDateInputToLocal(startDateStr, 0, 0, 0, 0);
+                    if (endDateStr) endBound = this.parseDateInputToLocal(endDateStr, 23, 59, 59, 999);
+                }
+
+                return { startDate: startBound, endDate: endBound };
+            }
             
             // 生成统计结果 - 基于文件中的任务开始时间
             async generateStatistics() {
@@ -1375,9 +1422,12 @@ startDateInput.value = formatDate(sevenDaysAgo);
                 
                 try {
                     const groupType = this.groupBy.value;
-                    const startDate = this.startDate.value ? new Date(this.startDate.value) : null;
-                    const endDate = this.endDate.value ? new Date(this.endDate.value) : null;
                     
+                    // 使用基于周期规则的范围计算：start/end 输入映射到对应周期的起始/结束
+                    const range = this.computeDateRangeForGroup(groupType, this.startDate.value, this.endDate.value);
+                    const startDate = range.startDate;
+                    const endDate = range.endDate;
+
                     // 按周期分组统计数据（完全基于文件中的任务开始时间）
                     const stats = this.groupDataByCycle(groupType, startDate, endDate);
                     
