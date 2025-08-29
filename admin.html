@@ -33,7 +33,12 @@
             </div>
             <div id="importStatus" class="mt-4 hidden"></div>
         </section>
-
+<!-- 在导入状态区域添加取消按钮 -->
+<div id="importStatus" class="mt-4 hidden">
+    <div class="flex items-center justify-between">
+        <span id="statusMessage"></span>
+        <button id="cancelUpload" class="ml-4 px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50">
+            取消上传
         <!-- 数据列表 -->
         <section class="bg-white rounded-lg p-6 shadow mb-8">
             <div class="flex justify-between items-center mb-4">
@@ -270,50 +275,134 @@
         }
 
         // 处理文件上传
-        async function handleFileUpload(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            showStatus('正在解析文件...');
-            
+       // 处理文件上传（分片上传版本）
+async function handleFileUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // 分片大小设置为5MB
+    const chunkSize = 5 * 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / chunkSize);
+    let uploadedChunks = 0;
+    
+    showStatus(`准备上传: ${file.name} (${formatFileSize(file.size)})`);
+    
+    try {
+        // 首先解析文件获取总记录数
+        const reader = new FileReader();
+        reader.onload = async (e) => {
             try {
-                const reader = new FileReader();
-                reader.onload = async (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                const totalRecords = jsonData.length;
+                
+                // 计算每批上传的记录数（每批约1000条）
+                const batchSize = 1000;
+                const totalBatches = Math.ceil(totalRecords / batchSize);
+                let processedBatches = 0;
+                let totalInserted = 0;
+                
+                showStatus(`开始上传，共 ${totalRecords} 条记录，分为 ${totalBatches} 批`);
+                
+                // 分批次上传
+                for (let i = 0; i < totalBatches; i++) {
+                    const start = i * batchSize;
+                    const end = Math.min(start + batchSize, totalRecords);
+                    const batch = jsonData.slice(start, end);
+                    
                     try {
-                        const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, { type: 'array' });
-                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
-                        
-                        showStatus(`解析完成，共 ${jsonData.length} 条记录，正在上传...`);
-                        
-                        // 上传数据到服务器
                         const response = await fetch('/api/import', {
                             method: 'POST',
                             headers: { 
                                 'Content-Type': 'application/json',
                                 'Authorization': `Bearer ${localStorage.getItem('token')}`
                             },
-                            body: JSON.stringify({ records: jsonData })
+                            body: JSON.stringify({ records: batch })
                         });
                         
                         const result = await response.json();
                         
                         if (result.success) {
-                            showStatus(`上传成功，导入 ${result.inserted} 条记录`, 'success');
-                            loadData(); // 刷新数据列表
+                            processedBatches++;
+                            totalInserted += result.inserted;
+                            const progress = Math.round((processedBatches / totalBatches) * 100);
+                            
+                            showStatus(
+                                `上传中: ${progress}% (${processedBatches}/${totalBatches} 批，已导入 ${totalInserted} 条)`,
+                                'info'
+                            );
                         } else {
-                            showStatus(`上传失败: ${result.error}`, 'error');
+                            showStatus(`第 ${i+1} 批上传失败: ${result.error}`, 'error');
+                            // 询问是否继续上传
+                            if (!confirm('部分批次上传失败，是否继续上传剩余部分？')) {
+                                break;
+                            }
                         }
                     } catch (error) {
-                        showStatus('处理文件失败: ' + error.message, 'error');
+                        showStatus(`第 ${i+1} 批上传出错: ${error.message}`, 'error');
+                        if (!confirm('上传出错，是否继续？')) {
+                            break;
+                        }
                     }
-                };
-                reader.readAsArrayBuffer(file);
+                }
+                
+                showStatus(`上传完成，共导入 ${totalInserted} 条记录 (总记录数: ${totalRecords})`, 'success');
+                loadData(); // 刷新数据列表
             } catch (error) {
-                showStatus('上传失败: ' + error.message, 'error');
+                showStatus('处理文件失败: ' + error.message, 'error');
             }
+        };
+        reader.readAsArrayBuffer(file);
+    } catch (error) {
+        showStatus('上传失败: ' + error.message, 'error');
+    }
+}
+
+// 辅助函数：格式化文件大小显示
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    else return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+// 添加取消上传功能
+let abortController = null;
+
+// 修改导入API调用部分，添加取消功能
+async function uploadBatch(batch, batchNumber, totalBatches) {
+    // 创建新的AbortController
+    abortController = new AbortController();
+    
+    try {
+        const response = await fetch('/api/import', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ records: batch }),
+            signal: abortController.signal // 关联信号
+        });
+        
+        // ... 处理响应
+        
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            showStatus('上传已取消', 'info');
+        } else {
+            showStatus(`第 ${batchNumber} 批上传出错: ${error.message}`, 'error');
         }
+    }
+}
+
+// 添加取消按钮事件
+document.getElementById('cancelUpload').addEventListener('click', () => {
+    if (abortController) {
+        abortController.abort();
+    }
+});
 
         // 显示状态消息
         function showStatus(message, type = 'info') {
