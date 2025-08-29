@@ -89,18 +89,26 @@ export default async function handler(req, res) {
       [username]
     );
     
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: '用户名或密码错误' });
-    }
+  console.log(`查询用户名: ${username}`);
+console.log(`查询结果数量: ${result.rows.length}`);
+if (result.rows.length > 0) {
+  console.log(`找到用户: ${result.rows[0].username}`);
+} else {
+  console.log(`未找到用户: ${username}`);
+}
 
-    const user = result.rows[0];
-    
-    // 验证密码
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    
-    if (!isPasswordValid) {
-      return res.status(401).json({ error: '用户名或密码错误' });
-    }
+if (result.rows.length === 0) {
+  return res.status(401).json({ error: '用户名或密码错误' });
+}
+
+// 密码验证部分
+const user = result.rows[0];
+const isPasswordValid = await bcrypt.compare(password, user.password);
+console.log(`密码验证结果: ${isPasswordValid}`);
+
+if (!isPasswordValid) {
+  return res.status(401).json({ error: '用户名或密码错误' });
+}
 
     // 生成JWT令牌
     const token = jwt.sign(
@@ -118,3 +126,4 @@ export default async function handler(req, res) {
     });
   }
 }
+
