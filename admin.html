@@ -496,6 +496,60 @@ document.getElementById('cancelUpload').addEventListener('click', () => {
                 alert('删除失败: ' + error.message);
             }
         };
+        // 检查令牌有效性
+async function validateToken() {
+    const token = localStorage.getItem('token');
+    const expiry = localStorage.getItem('tokenExpiry');
+    
+    // 检查令牌是否存在或已过期
+    if (!token || (expiry && Date.now() > parseInt(expiry))) {
+        logout();
+        return false;
+    }
+    
+    try {
+        // 主动验证令牌
+        const response = await fetch('/api/verify-token', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!response.ok) {
+            throw new Error('令牌无效');
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('令牌验证失败:', error);
+        logout();
+        return false;
+    }
+}
+
+// 退出登录函数
+function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('tokenExpiry');
+    window.location.href = '/login.html';
+}
+
+// 修改文件上传函数，添加令牌检查
+async function handleFileUpload(e) {
+    // 先检查令牌有效性
+    const isTokenValid = await validateToken();
+    if (!isTokenValid) {
+        showStatus('请先登录', 'error');
+        return;
+    }
+    
+    // 其余代码保持不变...
+}
+
+// 页面加载时验证令牌
+document.addEventListener('DOMContentLoaded', async () => {
+    await validateToken();
+    loadData();
+    setupEventListeners();
+});
     </script>
 </body>
 </html>
