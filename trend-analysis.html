@@ -531,7 +531,7 @@
             '开始时间': '开始时间'
         };
 
-        // IndexedDB工具类
+        // IndexedDB工具类（不变）
         class SatelliteDB {
             constructor() {
                 this.dbName = 'SatelliteDataDB';
@@ -635,7 +635,7 @@
             }
         }
 
-        // 周期规则引擎 - 修复并增强了季度分组逻辑
+        // 周期规则引擎（保留现有逻辑）
         class CycleRuleEngine {
             constructor() {
                 this.config = {
@@ -663,8 +663,9 @@
 
             groupByStartTime(data, groupBy, planIdField, startTimeField) {
                 const sortedData = [...data].sort((a, b) => {
-                    const dateA = new Date(a[startTimeField]);
-                    const dateB = new Date(b[startTimeField]);
+                    // a[startTimeField] 可能是 Date 或 字符串，转换为 Date 对象比较
+                    const dateA = a[startTimeField] instanceof Date ? a[startTimeField] : new Date(a[startTimeField]);
+                    const dateB = b[startTimeField] instanceof Date ? b[startTimeField] : new Date(b[startTimeField]);
                     return dateA - dateB;
                 });
 
@@ -675,7 +676,7 @@
                     const startTime = item[startTimeField];
                     if (!startTime) return;
 
-                    const itemDate = new Date(startTime);
+                    const itemDate = startTime instanceof Date ? startTime : new Date(startTime);
                     let group;
 
                     switch (groupBy) {
@@ -710,33 +711,23 @@
                 referenceDate.setHours(hours, minutes, 0, 0);
 
                 // 修复0点周期计算问题：
-                // 对于0点开始的周期，统一计算逻辑，确保日期边界处理正确
                 let cycleStart;
                 if (hours === 0 && minutes === 0) {
-                    // 0点周期：X日0点至X+1日0点
                     cycleStart = new Date(originalDate.getFullYear(), originalDate.getMonth(), originalDate.getDate(), 0, 0, 0, 0);
                 } else {
-                    // 常规处理：如果原始时间在参考时间之后或等于，使用当天参考时间，否则使用前一天
                     cycleStart = originalDate >= referenceDate
                         ? referenceDate
                         : new Date(referenceDate.getTime() - 24 * 60 * 60 * 1000);
                 }
 
-                // 计算周期结束时间（开始时间加24小时）
                 const cycleEnd = new Date(cycleStart.getTime() + 24 * 60 * 60 * 1000);
 
-                // 生成组键，确保0点周期的键正确反映日期
                 const groupKey = `${cycleStart.getFullYear()}-${String(cycleStart.getMonth() + 1).padStart(2, '0')}-${String(cycleStart.getDate()).padStart(2, '0')}`;
 
-                // 关键修复：检查是否为0点周期且日期边界存在问题
                 if (hours === 0 && minutes === 0) {
-                    // 对于0点周期，确保日期正确映射
                     const testDate = new Date(originalDate);
                     testDate.setHours(0, 0, 0, 0);
-
-                    // 如果原始时间在0点到24点之间，确认周期正确
                     if (originalDate >= testDate && originalDate < new Date(testDate.getTime() + 24 * 60 * 60 * 1000)) {
-                        // 确保键是当前日期
                         const correctKey = `${testDate.getFullYear()}-${String(testDate.getMonth() + 1).padStart(2, '0')}-${String(testDate.getDate()).padStart(2, '0')}`;
                         if (correctKey !== groupKey) {
                             return {
@@ -803,7 +794,6 @@
                 return { key: groupKey, label: groupKey, rangeStart: cycleStart, rangeEnd: cycleEnd };
             }
 
-            // 改进后的季度分组，确保任意季度起始月配置都能正确把日期映射到对应季度
             getQuarterGroup(date) {
                 const { startMonth, startTime } = this.config.quarter;
                 const { hours, minutes } = this.parseTimeToHoursMinutes(startTime);
@@ -812,18 +802,15 @@
                 const year = originalDate.getFullYear();
                 const month = originalDate.getMonth() + 1; // 1-12
 
-                // 计算相对月份偏移，确保在任意 startMonth 情况下都能定位到所属季度
                 const relative = (month - startMonth + 12) % 12;
                 const quarterIndex = Math.floor(relative / 3); // 0..3 within the cycle
                 const quarterStartMonth = ((startMonth + quarterIndex * 3 - 1) % 12) + 1; // 1-12
 
-                // 确定季度开始的年份（当季度起始月份大于当前月份时，可能在上一年）
                 const quarterStartYear = (quarterStartMonth > month) ? year - 1 : year;
 
                 const cycleStart = new Date(quarterStartYear, quarterStartMonth - 1, 1, hours, minutes, 0, 0);
                 const cycleEnd = new Date(cycleStart.getFullYear(), cycleStart.getMonth() + 3, 1, hours, minutes, 0, 0);
 
-                // 计算季度编号（使用常规的按公历分组编号：1..4）
                 const quarterNumber = Math.floor((quarterStartMonth - 1) / 3) + 1;
                 const groupKey = `${cycleStart.getFullYear()}-Q${quarterNumber}`;
 
@@ -973,7 +960,7 @@
             }
         }
 
-        // 支持全选的多选下拉组件
+        // 支持全选的多选下拉组件（不变）
         class MultiSelectDropdown {
             constructor(dropdownId, optionsId, displayId, valueId, tagsId, searchId, selectAllId, onChange) {
                 this.dropdownId = dropdownId;
@@ -993,7 +980,6 @@
             }
 
             init() {
-                // 绑定下拉点击事件
                 const dropdownEl = document.getElementById(this.dropdownId);
                 if (dropdownEl) {
                     dropdownEl.addEventListener('click', (e) => {
@@ -1002,7 +988,6 @@
                     });
                 }
 
-                // 绑定搜索事件
                 const searchEl = document.getElementById(this.searchId);
                 if (searchEl) {
                     searchEl.addEventListener('input', (e) => {
@@ -1010,19 +995,15 @@
                     });
                 }
 
-                // 绑定全选事件
                 const selectAllCheckbox = document.getElementById(this.selectAllId);
                 if (selectAllCheckbox) {
-                    // 为容器添加点击事件
                     selectAllCheckbox.addEventListener('click', (e) => {
                         e.stopPropagation();
                         this.toggleSelectAll();
                     });
                 }
 
-                // 点击其他区域关闭下拉
                 document.addEventListener('click', (e) => {
-                    // 检查点击是否在下拉菜单内部
                     const optionsContainer = document.getElementById(this.optionsId);
                     const isClickInside = optionsContainer && (optionsContainer.contains(e.target) ||
                                           (dropdownEl && dropdownEl.contains(e.target)));
@@ -1033,29 +1014,23 @@
                 });
             }
 
-            // 设置选项列表
             setOptions(options) {
                 this.allOptions = [...options];
                 this.renderOptions();
             }
 
-            // 渲染选项（带复选框）
             renderOptions(filter = '') {
                 const optionsContainer = document.getElementById(this.optionsId);
                 if (!optionsContainer) return;
 
-                // 保留搜索框和全选选项，清空其他选项
-                // 清空除搜索框和全选外的所有选项
                 while (optionsContainer.children.length > 2) {
                     optionsContainer.removeChild(optionsContainer.lastChild);
                 }
 
-                // 筛选选项
                 const filteredOptions = this.allOptions.filter(option =>
                     option.label.toLowerCase().includes(filter.toLowerCase())
                 );
 
-                // 添加复选框选项
                 filteredOptions.forEach(option => {
                     const optionEl = document.createElement('div');
                     optionEl.className = 'tab-item tab-item-inactive flex items-center p-2';
@@ -1066,13 +1041,11 @@
                         <span>${option.label}</span>
                     `;
 
-                    // 绑定复选框事件
                     optionEl.querySelector('input').addEventListener('change', (e) => {
                         e.stopPropagation();
                         this.toggleSelection(option.value, e.target.checked);
                     });
 
-                    // 防止点击选项时关闭下拉菜单，同时切换复选框状态
                     optionEl.addEventListener('click', (e) => {
                         e.stopPropagation();
                         if (e.target.tagName !== 'INPUT') {
@@ -1086,16 +1059,13 @@
                     optionsContainer.appendChild(optionEl);
                 });
 
-                // 更新全选状态
                 this.updateSelectAllStatus();
             }
 
-            // 筛选选项
             filterOptions(keyword) {
                 this.renderOptions(keyword);
             }
 
-            // 切换选中状态
             toggleSelection(value, isChecked) {
                 if (isChecked && !this.selectedValues.includes(value)) {
                     this.selectedValues.push(value);
@@ -1107,22 +1077,18 @@
                 this.updateTags();
                 this.updateSelectAllStatus();
 
-                // 触发回调
                 if (this.onChange) {
                     this.onChange([...this.selectedValues]);
                 }
 
-                // 保持下拉菜单打开
                 this.openDropdown();
             }
 
-            // 切换全选状态
             toggleSelectAll() {
                 const selectAllEl = document.getElementById(this.selectAllId);
                 if (!selectAllEl) return;
                 let checkbox = selectAllEl.querySelector('input[type="checkbox"]');
 
-                // 如果没有复选框则创建（updateSelectAllStatus 会创建，但防守）
                 if (!checkbox) {
                     this.updateSelectAllStatus();
                     checkbox = selectAllEl.querySelector('input[type="checkbox"]');
@@ -1134,23 +1100,19 @@
                 checkbox.dispatchEvent(event);
             }
 
-            // 更新全选状态
             updateSelectAllStatus() {
                 const optionsContainer = document.getElementById(this.optionsId);
                 const selectAllEl = document.getElementById(this.selectAllId);
                 if (!optionsContainer || !selectAllEl) return;
 
-                // 获取所有选项的复选框（不包括全选复选框）
                 const checkboxes = Array.from(optionsContainer.querySelectorAll('input[type="checkbox"]'))
                     .filter(cb => !cb.closest('#' + this.selectAllId));
 
                 const visibleOptionsCount = checkboxes.length;
                 const selectedCount = checkboxes.filter(cb => cb.checked).length;
 
-                // 检查是否已经有复选框
                 let checkbox = selectAllEl.querySelector('input[type="checkbox"]');
 
-                // 如果没有复选框，则创建一个
                 if (!checkbox) {
                     selectAllEl.innerHTML = '';
 
@@ -1193,7 +1155,6 @@
                 checkbox.checked = isAllSelected;
             }
 
-            // 更新显示文本
             updateDisplay() {
                 const displayEl = document.getElementById(this.displayId);
                 if (!displayEl) return;
@@ -1212,7 +1173,6 @@
                 if (hiddenInput) hiddenInput.value = JSON.stringify(this.selectedValues);
             }
 
-            // 更新选中标签
             updateTags() {
                 const tagsContainer = document.getElementById(this.tagsId);
                 if (!tagsContainer) return;
@@ -1252,7 +1212,6 @@
                 });
             }
 
-            // 清空选择
             clearSelection() {
                 this.selectedValues = [];
                 this.updateDisplay();
@@ -1263,28 +1222,24 @@
                 if (this.onChange) this.onChange([]);
             }
 
-            // 切换下拉显示状态
             toggleDropdown() {
                 const optionsContainer = document.getElementById(this.optionsId);
                 if (!optionsContainer) return;
                 optionsContainer.classList.toggle('hidden');
             }
 
-            // 关闭下拉
             closeDropdown() {
                 const optionsContainer = document.getElementById(this.optionsId);
                 if (!optionsContainer) return;
                 optionsContainer.classList.add('hidden');
             }
 
-            // 打开下拉
             openDropdown() {
                 const optionsContainer = document.getElementById(this.optionsId);
                 if (!optionsContainer) return;
                 optionsContainer.classList.remove('hidden');
             }
 
-            // 获取选中值
             getSelectedValues() {
                 return [...this.selectedValues];
             }
@@ -1305,13 +1260,11 @@
             }, 500);
         }
 
-        // 将 Chart.js 实例数据转换为 CSV（含 UTF-8 BOM，方便 Excel 打开）
         function chartToCSV(chart) {
             if (!chart) return '';
             const labels = chart.data.labels || [];
             const datasets = chart.data.datasets || [];
 
-            // Header: 分组, dataset1, dataset2, ...
             const header = ['分组', ...datasets.map(ds => ds.label || '')];
             const rows = [header];
 
@@ -1326,8 +1279,6 @@
                 rows.push(row);
             }
 
-            // Convert to CSV string
-            // escape values that contain commas or quotes or newlines
             const csvLines = rows.map(cols => cols.map(cell => {
                 if (cell === null || typeof cell === 'undefined') return '';
                 const cellStr = String(cell);
@@ -1337,7 +1288,6 @@
                 return cellStr;
             }).join(','));
 
-            // Add BOM for Excel on Windows
             return '\uFEFF' + csvLines.join('\n');
         }
 
@@ -1348,10 +1298,8 @@
                 this.cycleEngine = new CycleRuleEngine();
                 this.chartGenerator = new ChartGenerator();
 
-                // 初始化多选下拉组件（支持全选）
                 this.initMultiSelects();
 
-                // 应用状态
                 this.data = null;
                 this.filteredData = null;
                 this.rawData = null;
@@ -1366,7 +1314,6 @@
                 this.init();
             }
 
-            // 初始化多选下拉组件
             initMultiSelects() {
                 this.stationSelect = new MultiSelectDropdown(
                     'stationDropdown', 'stationOptions', 'stationDisplay',
@@ -1402,31 +1349,25 @@
                 this.setupEventListeners();
                 await this.loadData();
                 this.addDebugButtons();
-                this.bindDownloadButtons(); // 绑定下载按钮（委托）
+                this.bindDownloadButtons();
             }
 
             setupEventListeners() {
-                // 应用筛选按钮
                 const applyBtn = document.getElementById('applyFilters');
                 if (applyBtn) applyBtn.addEventListener('click', () => this.applyFilters());
-                // 重置筛选按钮
                 const resetBtn = document.getElementById('resetFilters');
                 if (resetBtn) resetBtn.addEventListener('click', () => this.resetFilters());
-                // 修复周期配置按钮事件绑定
                 const configBtn = document.getElementById('configGroupingBtn');
                 if (configBtn) configBtn.addEventListener('click', () => this.openCycleConfigModal());
-                // 关闭周期配置模态框
                 const closeModalBtn = document.getElementById('closeConfigModal');
                 if (closeModalBtn) closeModalBtn.addEventListener('click', () => this.closeCycleConfigModal());
-                // 保存周期配置
                 const saveConfigBtn = document.getElementById('saveGroupingConfig');
                 if (saveConfigBtn) saveConfigBtn.addEventListener('click', () => this.saveCycleConfig());
-                // 移动端菜单
                 const mobileMenuBtn = document.getElementById('mobileMenuBtn');
                 if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', () => {
                     document.getElementById('mobileMenu').classList.toggle('hidden');
                 });
-                // 日周期起始时间变化时更新显示
+
                 const dayStartEl = document.getElementById('dayStart');
                 if (dayStartEl) dayStartEl.addEventListener('change', (e) => {
                     document.getElementById('dayStartDisplay').textContent = e.target.value;
@@ -1434,19 +1375,16 @@
                 });
             }
 
-            // 打开周期配置模态框
             openCycleConfigModal() {
                 const modal = document.getElementById('groupingConfigModal');
                 const modalContent = document.getElementById('modalContent');
 
                 modal.classList.remove('hidden');
-                // 动画效果
                 setTimeout(() => {
                     modalContent.classList.remove('scale-95', 'opacity-0');
                     modalContent.classList.add('scale-100', 'opacity-100');
                 }, 10);
 
-                // 初始化显示值
                 document.getElementById('dayStart').value = this.cycleEngine.config.day.start;
                 document.getElementById('dayStartDisplay').textContent = this.cycleEngine.config.day.start;
                 document.getElementById('dayEndDisplay').textContent = this.cycleEngine.config.day.start;
@@ -1461,7 +1399,6 @@
                 document.getElementById('quarterStartTime').value = this.cycleEngine.config.quarter.startTime;
             }
 
-            // 关闭周期配置模态框
             closeCycleConfigModal() {
                 const modal = document.getElementById('groupingConfigModal');
                 const modalContent = document.getElementById('modalContent');
@@ -1474,7 +1411,6 @@
                 }, 300);
             }
 
-            // 保存周期配置
             saveCycleConfig() {
                 const newConfig = {
                     day: {
@@ -1497,7 +1433,6 @@
                 this.cycleEngine.updateConfig(newConfig);
                 this.closeCycleConfigModal();
 
-                // 重新应用筛选以更新图表
                 if (this.filteredData) {
                     this.applyFilters();
                 }
@@ -1514,23 +1449,16 @@
                         return;
                     }
 
-                    // 加载原始数据
                     const rawData = await this.db.getAllDataWithProgress((p) => {
                         document.getElementById('loadingProgress').style.width = `${p}%`;
                     });
 
                     this.rawData = rawData;
-
-                    // 提取嵌套数据
                     this.data = rawData[0]?.data || [];
 
-                    // 提取筛选字段值
                     this.extractFilterValues();
-
-                    // 初始化筛选器
                     this.initializeFilters();
 
-                    // 显示内容区域
                     if (dbLoading) dbLoading.classList.add('hidden');
                     document.getElementById('filterSection').classList.remove('hidden');
                     document.getElementById('chartsSection').classList.remove('hidden');
@@ -1544,48 +1472,34 @@
             }
 
             extractFilterValues() {
-                // 重置所有筛选字段
                 Object.keys(this.filterValues).forEach(key => this.filterValues[key] = []);
 
                 if (!this.data || !this.data.length) return;
 
-                // 遍历数据提取唯一值
                 this.data.forEach(item => {
                     Object.keys(this.filterValues).forEach(systemField => {
-                        // 获取数据中的实际字段名
                         const dataField = FIELD_MAPPING[systemField];
                         if (!dataField) return;
 
-                        const value = item[dataField]?.toString().trim();
+                        const value = (item[dataField] || '').toString().trim();
                         if (value && !this.filterValues[systemField].includes(value)) {
                             this.filterValues[systemField].push(value);
                         }
                     });
                 });
 
-                // 排序
                 Object.keys(this.filterValues).forEach(key => {
                     this.filterValues[key].sort((a, b) => a.localeCompare(b, 'zh-CN'));
                 });
             }
 
-            // 初始化筛选器选项
             initializeFilters() {
-                // 加载测站选项
-                const stationOptions = this.filterValues['测站名称'].map(station => ({
-                    value: station,
-                    label: station
-                }));
+                const stationOptions = this.filterValues['测站名称'].map(station => ({ value: station, label: station }));
                 this.stationSelect.setOptions(stationOptions);
 
-                // 加载客户选项
-                const customerOptions = this.filterValues['客户名称'].map(customer => ({
-                    value: customer,
-                    label: customer
-                }));
+                const customerOptions = this.filterValues['客户名称'].map(customer => ({ value: customer, label: customer }));
                 this.customerSelect.setOptions(customerOptions);
 
-                // 显示字段映射提示
                 if (this.filterValues['客户名称'].length === 0 && this.data.some(item => item[FIELD_MAPPING['客户名称']])) {
                     document.getElementById('dataStructureAlert').classList.remove('hidden');
                     document.getElementById('structureMsg').textContent =
@@ -1593,45 +1507,35 @@
                 }
             }
 
-            // 更新卫星选项
             updateSatelliteOptions() {
-                // 重置后续筛选器
                 this.resetSubsequentFilters('satellite');
 
-                // 获取当前选择的测站和客户
                 const stationValues = this.stationSelect.getSelectedValues();
                 const customerValues = this.customerSelect.getSelectedValues();
 
-                // 如果测站和客户都未选择，则不加载卫星选项
                 if (!stationValues.length && !customerValues.length) {
                     document.getElementById('satelliteDisplay').textContent = '请先选择测站或客户';
                     return;
                 }
 
-                // 根据测站和客户的组合筛选卫星
                 const filteredSatellites = [...new Set(
                     this.data
                         .filter(item => {
                             const matchesStation = !stationValues.length ||
-                                                  stationValues.includes(item[FIELD_MAPPING['测站名称']]);
+                                                  stationValues.includes((item[FIELD_MAPPING['测站名称']] || '').toString().trim());
                             const matchesCustomer = !customerValues.length ||
-                                                  customerValues.includes(item[FIELD_MAPPING['客户名称']]);
+                                                  customerValues.includes((item[FIELD_MAPPING['客户名称']] || '').toString().trim());
                             return matchesStation && matchesCustomer;
                         })
-                        .map(item => item[FIELD_MAPPING['卫星名称']]?.toString().trim())
+                        .map(item => (item[FIELD_MAPPING['卫星名称']] || '').toString().trim())
                         .filter(Boolean)
                 )].sort();
 
-                // 加载卫星选项
-                const satelliteOptions = filteredSatellites.map(satellite => ({
-                    value: satellite,
-                    label: satellite
-                }));
+                const satelliteOptions = filteredSatellites.map(satellite => ({ value: satellite, label: satellite }));
                 this.satelliteSelect.setOptions(satelliteOptions);
                 document.getElementById('satelliteDisplay').textContent = '请选择卫星';
             }
 
-            // 更新任务状态选项
             updateStatusOptions() {
                 this.resetSubsequentFilters('status');
 
@@ -1641,26 +1545,20 @@
                 const stationValues = this.stationSelect.getSelectedValues();
                 const customerValues = this.customerSelect.getSelectedValues();
 
-                // 筛选任务状态
                 const filteredStatuses = [...new Set(
                     this.data
-                        .filter(item => !stationValues.length || stationValues.includes(item[FIELD_MAPPING['测站名称']]))
-                        .filter(item => !customerValues.length || customerValues.includes(item[FIELD_MAPPING['客户名称']]))
-                        .filter(item => satelliteValues.includes(item[FIELD_MAPPING['卫星名称']]))
-                        .map(item => item[FIELD_MAPPING['任务结果状态']]?.toString().trim())
+                        .filter(item => !stationValues.length || stationValues.includes((item[FIELD_MAPPING['测站名称']] || '').toString().trim()))
+                        .filter(item => !customerValues.length || customerValues.includes((item[FIELD_MAPPING['客户名称']] || '').toString().trim()))
+                        .filter(item => satelliteValues.includes((item[FIELD_MAPPING['卫星名称']] || '').toString().trim()))
+                        .map(item => (item[FIELD_MAPPING['任务结果状态']] || '').toString().trim())
                         .filter(Boolean)
                 )].sort();
 
-                // 加载状态选项
-                const statusOptions = filteredStatuses.map(status => ({
-                    value: status,
-                    label: status
-                }));
+                const statusOptions = filteredStatuses.map(status => ({ value: status, label: status }));
                 this.statusSelect.setOptions(statusOptions);
                 document.getElementById('statusDisplay').textContent = '请选择任务状态';
             }
 
-            // 更新任务类型选项
             updateTypeOptions() {
                 this.resetSubsequentFilters('type');
 
@@ -1671,27 +1569,21 @@
                 const customerValues = this.customerSelect.getSelectedValues();
                 const satelliteValues = this.satelliteSelect.getSelectedValues();
 
-                // 筛选任务类型
                 const filteredTypes = [...new Set(
                     this.data
-                        .filter(item => !stationValues.length || stationValues.includes(item[FIELD_MAPPING['测站名称']]))
-                        .filter(item => !customerValues.length || customerValues.includes(item[FIELD_MAPPING['客户名称']]))
-                        .filter(item => !satelliteValues.length || satelliteValues.includes(item[FIELD_MAPPING['卫星名称']]))
-                        .filter(item => statusValues.includes(item[FIELD_MAPPING['任务结果状态']]))
-                        .map(item => item[FIELD_MAPPING['任务类型']]?.toString().trim())
+                        .filter(item => !stationValues.length || stationValues.includes((item[FIELD_MAPPING['测站名称']] || '').toString().trim()))
+                        .filter(item => !customerValues.length || customerValues.includes((item[FIELD_MAPPING['客户名称']] || '').toString().trim()))
+                        .filter(item => !satelliteValues.length || satelliteValues.includes((item[FIELD_MAPPING['卫星名称']] || '').toString().trim()))
+                        .filter(item => statusValues.includes((item[FIELD_MAPPING['任务结果状态']] || '').toString().trim()))
+                        .map(item => (item[FIELD_MAPPING['任务类型']] || '').toString().trim())
                         .filter(Boolean)
                 )].sort();
 
-                // 加载类型选项
-                const typeOptions = filteredTypes.map(type => ({
-                    value: type,
-                    label: type
-                }));
+                const typeOptions = filteredTypes.map(type => ({ value: type, label: type }));
                 this.typeSelect.setOptions(typeOptions);
                 document.getElementById('typeDisplay').textContent = '请选择任务类型';
             }
 
-            // 重置后续筛选器
             resetSubsequentFilters(after = '') {
                 const filterOrder = ['station', 'customer', 'satellite', 'status', 'type'];
                 const startIndex = after ? filterOrder.indexOf(after) + 1 : 1;
@@ -1703,58 +1595,147 @@
                 }
             }
 
+            // Helper: 将各种时间值按"文件时间"(本地语义)解析为 Date 对象
+            parseToLocalDate(value) {
+                if (!value && value !== 0) return null;
+                if (value instanceof Date) return new Date(
+                    value.getFullYear(), value.getMonth(), value.getDate(),
+                    value.getHours(), value.getMinutes(), value.getSeconds(), value.getMilliseconds()
+                );
+
+                // 处理 Excel 数字序列（如果有）
+                if (typeof value === 'number') {
+                    // Excel序列号 -> JS 时间（不做时区偏移）
+                    try {
+                        return new Date((value - 25569) * 86400000);
+                    } catch (e) {
+                        return new Date(value);
+                    }
+                }
+
+                if (typeof value === 'string') {
+                    const s = value.trim();
+                    // YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS
+                    const dateTimeMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}):(\d{2}))?$/);
+                    if (dateTimeMatch) {
+                        const y = parseInt(dateTimeMatch[1], 10);
+                        const m = parseInt(dateTimeMatch[2], 10) - 1;
+                        const d = parseInt(dateTimeMatch[3], 10);
+                        const hh = parseInt(dateTimeMatch[4] || '0', 10);
+                        const mm = parseInt(dateTimeMatch[5] || '0', 10);
+                        const ss = parseInt(dateTimeMatch[6] || '0', 10);
+                        return new Date(y, m, d, hh, mm, ss, 0);
+                    }
+
+                    // 其他格式，fallback 到 Date 构造（有可能走到 UTC，尽量避免）
+                    const fallback = new Date(s);
+                    if (!isNaN(fallback.getTime())) return fallback;
+
+                    return null;
+                }
+
+                // fallback
+                const fallback = new Date(value);
+                return isNaN(fallback.getTime()) ? null : fallback;
+            }
+
+            // 将 start/end 的 YYYY-MM-DD 输入映射到基于周期规则的实际边界（start inclusive, end inclusive）
+            computeDateRangeForGroup(groupType, startDateStr, endDateStr) {
+                let startBound = null;
+                let endBound = null;
+
+                const makeMidday = (dateStr) => {
+                    if (!dateStr) return null;
+                    const parts = dateStr.split('-').map(Number);
+                    return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0);
+                };
+
+                try {
+                    if (startDateStr) {
+                        const midStart = makeMidday(startDateStr);
+                        const gStart = this.cycleEngine.getDayGroup
+                            ? (groupType === 'day' ? this.cycleEngine.getDayGroup(midStart) : this.cycleEngine.getGroup ? this.cycleEngine.getGroup(midStart, groupType) : null)
+                            : (this.cycleEngine.getGroup ? this.cycleEngine.getGroup(midStart, groupType) : null);
+                        if (gStart) startBound = gStart.rangeStart;
+                    }
+
+                    if (endDateStr) {
+                        const midEnd = makeMidday(endDateStr);
+                        const gEnd = this.cycleEngine.getDayGroup
+                            ? (groupType === 'day' ? this.cycleEngine.getDayGroup(midEnd) : this.cycleEngine.getGroup ? this.cycleEngine.getGroup(midEnd, groupType) : null)
+                            : (this.cycleEngine.getGroup ? this.cycleEngine.getGroup(midEnd, groupType) : null);
+
+                        if (gEnd) {
+                            // inclusive end bound -> rangeEnd - 1ms
+                            endBound = new Date(gEnd.rangeEnd.getTime() - 1);
+                        }
+                    }
+                } catch (err) {
+                    console.warn('computeDateRangeForGroup failed, fallback to local day bounds', err);
+                    if (startDateStr) startBound = this.parseToLocalDate(`${startDateStr} 00:00:00`);
+                    if (endDateStr) endBound = this.parseToLocalDate(`${endDateStr} 23:59:59`);
+                }
+
+                return { startDate: startBound, endDate: endBound };
+            }
+
             // 应用筛选（修复时间轴范围问题）
             applyFilters() {
                 if (!this.data) return;
 
-                // 获取所有筛选条件
                 const stationValues = this.stationSelect.getSelectedValues();
                 const customerValues = this.customerSelect.getSelectedValues();
                 const satelliteValues = this.satelliteSelect.getSelectedValues();
                 const statusValues = this.statusSelect.getSelectedValues();
                 const typeValues = this.typeSelect.getSelectedValues();
 
-                // 获取日期范围
-                const startDate = document.getElementById('startDate').value
-                    ? new Date(document.getElementById('startDate').value)
-                    : null;
-                const endDate = document.getElementById('endDate').value
-                    ? new Date(document.getElementById('endDate').value)
-                    : null;
-                // 如果设置了结束日期，将其调整为当天结束时间
-                if (endDate) {
-                    endDate.setHours(23, 59, 59, 999);
-                }
+                // 先计算周期性范围边界（将 YYYY-MM-DD 映射到对应周期的 rangeStart/rangeEnd）
+                const groupBy = document.getElementById('groupBy').value;
+                const startInput = document.getElementById('startDate').value;
+                const endInput = document.getElementById('endDate').value;
+                const range = this.computeDateRangeForGroup(groupBy, startInput, endInput);
+                const startBound = range.startDate; // may be null
+                const endBound = range.endDate; // may be null (inclusive)
 
-                // 应用筛选（所有条件为"与"的关系）
-                this.filteredData = this.data.filter(item => {
-                    // 时间范围筛选（核心修复：仅保留日期范围内的数据）
-                    const itemDate = new Date(item[FIELD_MAPPING['开始时间']]);
-                    if (startDate && itemDate < startDate) return false;
-                    if (endDate && itemDate > endDate) return false;
+                // 为了避免浏览器将 YYYY-MM-DD 当成 UTC 导致偏移，我们先把数据副本中的开始时间解析为本地 Date
+                const normalizedField = FIELD_MAPPING['开始时间'];
+                const dataForFiltering = this.data.map(item => {
+                    const newItem = Object.assign({}, item);
+                    newItem[normalizedField] = this.parseToLocalDate(item[normalizedField]);
+                    return newItem;
+                });
 
-                    // 测站筛选
-                    if (stationValues.length && !stationValues.includes(item[FIELD_MAPPING['测站名称']])) {
+                // 过滤（所有条件为 "且"）
+                this.filteredData = dataForFiltering.filter(item => {
+                    const itemDate = item[normalizedField];
+                    if (!itemDate) return false;
+
+                    // 时间范围比较（使用文件时间语义）
+                    if (startBound && itemDate < startBound) return false;
+                    if (endBound && itemDate > endBound) return false;
+
+                    // 测站
+                    if (stationValues.length && !stationValues.includes((item[FIELD_MAPPING['测站名称']] || '').toString().trim())) {
                         return false;
                     }
 
-                    // 客户筛选
-                    if (customerValues.length && !customerValues.includes(item[FIELD_MAPPING['客户名称']])) {
+                    // 客户
+                    if (customerValues.length && !customerValues.includes((item[FIELD_MAPPING['客户名称']] || '').toString().trim())) {
                         return false;
                     }
 
-                    // 卫星筛选
-                    if (satelliteValues.length && !satelliteValues.includes(item[FIELD_MAPPING['卫星名称']])) {
+                    // 卫星
+                    if (satelliteValues.length && !satelliteValues.includes((item[FIELD_MAPPING['卫星名称']] || '').toString().trim())) {
                         return false;
                     }
 
-                    // 状态筛选
-                    if (statusValues.length && !statusValues.includes(item[FIELD_MAPPING['任务结果状态']])) {
+                    // 状态
+                    if (statusValues.length && !statusValues.includes((item[FIELD_MAPPING['任务结果状态']] || '').toString().trim())) {
                         return false;
                     }
 
-                    // 类型筛选
-                    if (typeValues.length && !typeValues.includes(item[FIELD_MAPPING['任务类型']])) {
+                    // 类型
+                    if (typeValues.length && !typeValues.includes((item[FIELD_MAPPING['任务类型']] || '').toString().trim())) {
                         return false;
                     }
 
@@ -1762,31 +1743,24 @@
                 });
 
                 // 生成图表
-                this.generateAllCharts(document.getElementById('groupBy').value);
+                this.generateAllCharts(groupBy);
             }
 
-            // 生成所有图表
             generateAllCharts(groupBy) {
                 if (!this.filteredData || !this.filteredData.length) {
                     this.clearAllCharts();
                     return;
                 }
 
-                // 按测站生成图表
                 this.generateCategoryChart('stationChart', '测站名称趋势分析', '测站名称', groupBy);
-                // 按客户生成图表
                 this.generateCategoryChart('customerChart', '客户名称趋势分析', '客户名称', groupBy);
-                // 按卫星生成图表
                 this.generateCategoryChart('satelliteChart', '卫星名称趋势分析', '卫星名称', groupBy);
-                // 按任务状态生成图表
                 this.generateCategoryChart('statusChart', '任务结果状态趋势分析', '任务结果状态', groupBy);
-                // 按任务类型生成图表
                 this.generateCategoryChart('typeChart', '任务类型趋势分析', '任务类型', groupBy);
             }
 
-            // 生成分类图表
             generateCategoryChart(chartId, title, categoryField, groupBy) {
-                // 按时间分组
+                // 使用已经标准化（本地 Date）的字段进行分组：groupByStartTime 会用 item[FIELD_MAPPING['开始时间']] 的值（现在为 Date）
                 const groupedResult = this.cycleEngine.groupByStartTime(
                     this.filteredData,
                     groupBy,
@@ -1795,18 +1769,16 @@
                 );
 
                 if (!groupedResult.sortedKeys.length) {
-                    document.getElementById(`${chartId}Empty`).classList.remove('hidden');
-                    // 确保销毁旧图表
+                    const emptyEl = document.getElementById(`${chartId}Empty`);
+                    if (emptyEl) emptyEl.classList.remove('hidden');
                     this.chartGenerator.destroyChart(chartId);
                     return;
                 }
 
-                // 获取分类值
                 const categories = [...new Set(
-                    this.filteredData.map(item => item[FIELD_MAPPING[categoryField]]?.toString().trim()).filter(Boolean)
+                    this.filteredData.map(item => (item[FIELD_MAPPING[categoryField]] || '').toString().trim()).filter(Boolean)
                 )];
 
-                // 准备图表数据
                 const xLabels = groupedResult.sortedKeys.map(key =>
                     groupedResult.groupMetadata[key].label
                 );
@@ -1815,36 +1787,28 @@
                     label: category,
                     data: groupedResult.sortedKeys.map(key =>
                         groupedResult.groups[key].filter(item =>
-                            item[FIELD_MAPPING[categoryField]]?.toString().trim() === category
+                            (item[FIELD_MAPPING[categoryField]] || '').toString().trim() === category
                         ).length
                     )
                 }));
 
-                // 生成曲线图
                 const chart = this.chartGenerator.generateTrendChart(chartId, title, xLabels, datasets);
-
-                // 若需要做额外标记或存储原始 series 数据，可在此处保存到 this (目前 chart 对象已包含所有可导出的数据)
                 return chart;
             }
 
-            // 重置筛选
             resetFilters() {
-                // 清空所有选择
                 this.stationSelect.clearSelection();
                 this.customerSelect.clearSelection();
                 this.satelliteSelect.clearSelection();
                 this.statusSelect.clearSelection();
                 this.typeSelect.clearSelection();
 
-                // 清空日期选择
                 document.getElementById('startDate').value = '';
                 document.getElementById('endDate').value = '';
 
-                // 清空图表
                 this.clearAllCharts();
             }
 
-            // 清空图表
             clearAllCharts() {
                 ['stationChart', 'customerChart', 'satelliteChart', 'statusChart', 'typeChart'].forEach(id => {
                     this.chartGenerator.destroyChart(id);
@@ -1853,7 +1817,6 @@
                 });
             }
 
-            // 更新调试信息
             updateDebugInfo() {
                 const debugContent = document.getElementById('debugContent');
                 let info = "字段映射配置:\n";
@@ -1869,7 +1832,6 @@
                 debugContent.textContent = info;
             }
 
-            // 添加调试按钮
             addDebugButtons() {
                 const debugInfo = document.getElementById('debugInfo');
                 const toggleBtn = document.createElement('button');
@@ -1884,7 +1846,6 @@
                 document.querySelector('main').appendChild(toggleBtn);
             }
 
-            // 绑定下载按钮（事件委托）
             bindDownloadButtons() {
                 document.addEventListener('click', (e) => {
                     const btn = e.target.closest && e.target.closest('.chart-download-btn');
@@ -1893,7 +1854,6 @@
                     const chartId = btn.getAttribute('data-chart');
                     const type = btn.getAttribute('data-type');
 
-                    // Ensure app.chartGenerator exists
                     const chart = this.chartGenerator.charts[chartId];
                     if (!chart) {
                         alert('当前图表无数据或尚未生成，请先应用筛选生成图表后再下载。');
@@ -1905,7 +1865,6 @@
                             const imgUrl = chart.toBase64Image();
                             const a = document.createElement('a');
                             a.href = imgUrl;
-                            // 生成友好文件名，带时间戳
                             const now = new Date();
                             const ts = now.toISOString().replace(/[:.]/g, '-');
                             a.download = `${chartId}-${ts}.png`;
