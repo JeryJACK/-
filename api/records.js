@@ -10,56 +10,46 @@ if (!global._pgPool) {
 }
 
 export default async function handler(req, res) {
-  // 对于GET请求不需要验证（公开数据），其他请求需要验证
-  if (req.method !== 'GET') {
-    const auth = await verifyAuth(req);
-    if (!auth.success) {
-      return res.status(401).json({ error: auth.error });
-    }
+  // 验证身份
+  const auth = await verifyAuth(req);
+  if (!auth.success && req.method !== 'GET') {
+    return res.status(401).json({ error: auth.error });
   }
+
+  const { page = 1, pageSize = 10 } = req.query;
+  const offset = (page - 1) * pageSize;
 
   try {
     if (req.method === 'GET') {
-      // 获取分页参数
-      const page = parseInt(req.query.page) || 1;
-      const pageSize = parseInt(req.query.pageSize) || 10;
-      const offset = (page - 1) * pageSize;
-      
-      // 先获取总数
+      // 获取总记录数
       const countResult = await pool.query('SELECT COUNT(*) FROM raw_records');
-      const total = parseInt(countResult.rows[0].count);
+      const total = parseInt(countResult.rows[0].count, 10);
       
-      // 获取当前页数据
+      // 关键修复：查询时将UTC时间转换为北京时间
       const result = await pool.query(
-        'SELECT * FROM raw_records ORDER BY start_time DESC LIMIT $1 OFFSET $2',
+        `SELECT id, plan_id, 
+                -- 将存储的UTC时间转换为北京时间显示
+                start_time AT TIME ZONE 'Asia/Shanghai' AS start_time,
+                customer, satellite, station, 
+                task_result, task_type 
+         FROM raw_records 
+         ORDER BY start_time DESC 
+         LIMIT $1 OFFSET $2`,
         [pageSize, offset]
       );
       
       res.json({
         records: result.rows,
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize)
+        total: total,
+        page: parseInt(page, 10),
+        pageSize: parseInt(pageSize, 10)
       });
-    } else if (req.method === 'POST') {
-      // 添加新记录
-      const { plan_id, start_time, customer, satellite, station, task_result, raw } = req.body;
-      
-      const result = await pool.query(
-        `INSERT INTO raw_records 
-         (plan_id, start_time, customer, satellite, station, task_result, raw) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7) 
-         RETURNING *`,
-        [plan_id, start_time, customer, satellite, station, task_result, raw]
-      );
-      
-      res.status(201).json({ success: true, record: result.rows[0] });
     } else {
       res.status(405).json({ error: '方法不允许' });
     }
   } catch (error) {
-    console.error('记录API错误:', error);
+    console.error('查询记录错误:', error);
     res.status(500).json({ error: '服务器错误' });
   }
 }
+    
