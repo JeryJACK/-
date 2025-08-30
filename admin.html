@@ -80,7 +80,6 @@
             <h3 class="text-lg font-semibold mb-4">编辑数据</h3>
             <form id="editForm">
                 <input type="hidden" id="editId">
-                <!-- 表单字段将通过JS动态生成 -->
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">计划ID</label>
@@ -161,11 +160,10 @@
 
         // 设置事件监听
         function setupEventListeners() {
-            // 文件上传
+            // 文件上传相关事件（保持不变）
             dropArea.addEventListener('click', () => fileInput.click());
             fileInput.addEventListener('change', handleFileUpload);
             
-            // 拖放事件
             dropArea.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 dropArea.classList.add('border-primary');
@@ -185,7 +183,7 @@
                 }
             });
             
-            // 分页按钮
+            // 分页和刷新按钮
             prevPageBtn.addEventListener('click', () => {
                 if (currentPage > 1) {
                     currentPage--;
@@ -198,7 +196,6 @@
                 loadData();
             });
             
-            // 刷新按钮
             refreshBtn.addEventListener('click', loadData);
             
             // 退出登录
@@ -218,15 +215,20 @@
             });
         }
 
-        // 格式化时间显示
-        function formatDateTime(dateString) {
-            if (!dateString) return '-';
+        /**
+         * 核心修复：正确处理UTC时间到本地时间的转换
+         * 将后端返回的UTC时间（带Z后缀）转换为本地时间（UTC+8）显示
+         */
+        function formatDateTime(utcTimeString) {
+            if (!utcTimeString) return '-';
             
-            const date = new Date(dateString);
+            // 确保解析为UTC时间
+            const date = new Date(utcTimeString);
+            
             // 检查日期是否有效
             if (isNaN(date.getTime())) return '-';
             
-            // 配置时间显示格式，使用中国时区
+            // 转换为本地时间（Asia/Shanghai）显示
             return date.toLocaleString('zh-CN', {
                 year: 'numeric',
                 month: '2-digit',
@@ -237,6 +239,37 @@
                 hour12: false,
                 timeZone: 'Asia/Shanghai'
             }).replace(',', ' ');
+        }
+
+        /**
+         * 将本地时间转换为UTC时间字符串（用于提交到后端）
+         */
+        function localToUTC(localDateTimeString) {
+            if (!localDateTimeString) return null;
+            
+            // 解析本地时间
+            const localDate = new Date(`${localDateTimeString}+08:00`);
+            
+            // 转换为UTC时间字符串
+            return localDate.toISOString();
+        }
+
+        /**
+         * 将UTC时间转换为本地时间的datetime-local格式（用于编辑框）
+         */
+        function utcToLocalDateTimeInput(utcTimeString) {
+            if (!utcTimeString) return '';
+            
+            // 解析UTC时间
+            const utcDate = new Date(utcTimeString);
+            
+            // 转换为本地时间
+            const localDate = new Date(
+                utcDate.getTime() + utcDate.getTimezoneOffset() * 60000
+            );
+            
+            // 格式化为datetime-local所需的格式 (yyyy-MM-ddThh:mm)
+            return localDate.toISOString().slice(0, 16);
         }
 
         // 加载数据
@@ -290,7 +323,7 @@
             `).join('');
         }
 
-        // 处理文件上传
+        // 处理文件上传（保持不变）
         async function handleFileUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -336,7 +369,7 @@
             }
         }
 
-        // 显示状态消息
+        // 显示状态消息（保持不变）
         function showStatus(message, type = 'info') {
             importStatus.textContent = message;
             importStatus.className = 'mt-4 p-3 rounded-lg flex items-center';
@@ -352,7 +385,7 @@
             importStatus.classList.remove('hidden');
         }
 
-        // 编辑数据
+        // 编辑数据（修复时间处理）
         window.editData = async (id) => {
             try {
                 const response = await fetch(`/api/records/${id}`, {
@@ -366,10 +399,11 @@
                     return;
                 }
                 
-                // 填充表单
+                // 填充表单，重点修复时间处理
                 document.getElementById('editId').value = data.id;
                 document.getElementById('editPlanId').value = data.plan_id || '';
-                document.getElementById('editStartTime').value = data.start_time ? new Date(data.start_time).toISOString().slice(0, 16) : '';
+                // 将UTC时间转换为本地时间的datetime-local格式
+                document.getElementById('editStartTime').value = utcToLocalDateTimeInput(data.start_time);
                 document.getElementById('editCustomer').value = data.customer || '';
                 document.getElementById('editSatellite').value = data.satellite || '';
                 document.getElementById('editStation').value = data.station || '';
@@ -382,12 +416,15 @@
             }
         };
 
-        // 保存编辑的数据
+        // 保存编辑的数据（修复时间处理）
         async function saveEditedData() {
             const id = document.getElementById('editId').value;
+            // 将本地时间转换为UTC时间再提交
+            const localStartTime = document.getElementById('editStartTime').value;
+            
             const data = {
                 plan_id: document.getElementById('editPlanId').value,
-                start_time: document.getElementById('editStartTime').value,
+                start_time: localToUTC(localStartTime), // 关键修复：转换为UTC时间
                 customer: document.getElementById('editCustomer').value,
                 satellite: document.getElementById('editSatellite').value,
                 station: document.getElementById('editStation').value,
@@ -417,7 +454,7 @@
             }
         }
 
-        // 删除数据
+        // 删除数据（保持不变）
         window.deleteData = async (id) => {
             if (!confirm('确定要删除这条记录吗？')) return;
             
@@ -441,3 +478,4 @@
     </script>
 </body>
 </html>
+    
