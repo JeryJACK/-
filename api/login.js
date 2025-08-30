@@ -1,6 +1,6 @@
-import { Pool } from 'pg';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 let pool;
 if (!global._pgPool) {
@@ -10,7 +10,7 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: '方法不允许' });
   }
@@ -46,4 +46,5 @@ export default async function handler(req, res) {
     console.error('登录错误:', error);
     res.status(500).json({ error: '服务器错误' });
   }
-}
+};
+    
