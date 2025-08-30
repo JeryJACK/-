@@ -107,13 +107,13 @@ export default async function handler(req, res) {
             // 原始时间备份
             rawTime,
             // 客户信息
-            record['客户'] || record.customer || null,
+            record['所属客户'] || record.customer || null,
             // 卫星信息
-            record['卫星'] || record.satellite || null,
+            record['卫星名称'] || record.satellite || null,
             // 测站信息
-            record['测站'] || record.station || null,
+            record['测站，名称'] || record.station || null,
             // 任务结果
-            record['任务结果'] || record.taskResult || null,
+            record['任务结果状态'] || record.taskResult || null,
             // 任务类型
             record['任务类型'] || record.taskType || null,
             // 原始数据备份
@@ -163,3 +163,4 @@ export default async function handler(req, res) {
   }
 }
     
+
