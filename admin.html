@@ -216,8 +216,8 @@
         }
 
         /**
-         * 核心修改：完全按照文件原始时间显示，不进行任何时区转换
-         * 直接显示数据库中存储的时间，与Excel文件保持一致
+         * 核心修复：强制抵消8小时时差，确保显示Excel文件中的原始时间
+         * 数据库存储的时间比文件时间早8小时，因此显示时需要加上8小时
          */
         function formatDateTime(rawTimeString) {
             if (!rawTimeString) return '-';
@@ -228,36 +228,50 @@
             // 检查日期是否有效
             if (isNaN(date.getTime())) return '-';
             
-            // 直接提取UTC时间部分，不做时区转换
-            const year = date.getUTCFullYear();
-            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-            const day = String(date.getUTCDate()).padStart(2, '0');
-            const hours = String(date.getUTCHours()).padStart(2, '0');
-            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-            const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+            // 强制加上8小时，抵消时差
+            date.setHours(date.getHours() + 8);
             
-            // 返回与Excel文件中相同的时间格式
+            // 提取时间部分
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            
+            // 输出与Excel文件相同的时间
             return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
         }
 
         /**
-         * 将输入的本地时间直接作为UTC时间提交，不做时区转换
+         * 编辑时：将输入的文件时间转换为数据库存储时间（减去8小时）
          */
         function inputToRawTime(localDateTimeString) {
             if (!localDateTimeString) return null;
             
-            // 将输入的时间直接视为UTC时间
-            return `${localDateTimeString}:00.000Z`;
+            // 解析输入的时间
+            const date = new Date(`${localDateTimeString}:00`);
+            
+            // 减去8小时，匹配数据库存储格式
+            date.setHours(date.getHours() - 8);
+            
+            return date.toISOString();
         }
 
         /**
-         * 将原始时间转换为编辑框需要的格式，不做时区转换
+         * 编辑时：将数据库时间转换为文件时间（加上8小时）
          */
         function rawTimeToInput(rawTimeString) {
             if (!rawTimeString) return '';
             
-            // 直接截取需要的部分，不做时区转换
-            return rawTimeString.slice(0, 16);
+            // 解析数据库时间
+            const date = new Date(rawTimeString);
+            
+            // 加上8小时，还原为文件时间
+            date.setHours(date.getHours() + 8);
+            
+            // 格式化为datetime-local需要的格式
+            return date.toISOString().slice(0, 16);
         }
 
         // 加载数据
@@ -387,7 +401,7 @@
                     return;
                 }
                 
-                // 填充表单，不做时区转换
+                // 填充表单，转换时间为文件原始时间
                 document.getElementById('editId').value = data.id;
                 document.getElementById('editPlanId').value = data.plan_id || '';
                 document.getElementById('editStartTime').value = rawTimeToInput(data.start_time);
@@ -406,12 +420,12 @@
         // 保存编辑的数据
         async function saveEditedData() {
             const id = document.getElementById('editId').value;
-            // 直接使用输入的时间作为原始时间，不做时区转换
             const inputStartTime = document.getElementById('editStartTime').value;
             
+            // 转换为数据库需要的时间格式（减去8小时）
             const data = {
                 plan_id: document.getElementById('editPlanId').value,
-                start_time: inputToRawTime(inputStartTime), // 不做时区转换
+                start_time: inputToRawTime(inputStartTime),
                 customer: document.getElementById('editCustomer').value,
                 satellite: document.getElementById('editSatellite').value,
                 station: document.getElementById('editStation').value,
