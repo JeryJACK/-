@@ -50,13 +50,14 @@ export default async function handler(req, res) {
          (plan_id, start_time, customer, satellite, station, task_result, raw)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
-          record.plan_id || record.计划ID || null,
-          startTime || null,
-          record.customer || record.客户 || null,
-          record.satellite || record.卫星 || null,
-          record.station || record.测站 || null,
-          record.task_result || record.任务结果 || null,
-          record // 存储原始数据
+         record.plan_id || record.计划ID || null,
+          startTime || record.开始时间 || null,
+          record.customer || record.所属客户 || null,
+          record.satellite || record.卫星名称 || null,
+          record.station || record.测站名称 || null,
+          record.task_result || record.任务结果状态 || null,
+          record.task_type || record.任务类型 || null,
+          // 存储原始数据
         ]
       );
       
@@ -74,3 +75,4 @@ export default async function handler(req, res) {
     res.status(500).json({ error: '导入失败: ' + error.message });
   }
 }
+
