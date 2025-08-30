@@ -216,22 +216,19 @@
         }
 
         /**
-         * 核心修复：强制抵消8小时时差，确保显示Excel文件中的原始时间
-         * 数据库存储的时间比文件时间早8小时，因此显示时需要加上8小时
+         * 修正时间显示：直接显示数据库中的本地时间，不进行时差调整
+         * 数据库已存储正确的本地时间（如2025-01-01 00:01:07），前端直接格式化显示
          */
         function formatDateTime(rawTimeString) {
             if (!rawTimeString) return '-';
             
-            // 解析原始时间字符串
+            // 解析数据库中的本地时间
             const date = new Date(rawTimeString);
             
             // 检查日期是否有效
             if (isNaN(date.getTime())) return '-';
             
-            // 强制加上8小时，抵消时差
-            date.setHours(date.getHours() + 8);
-            
-            // 提取时间部分
+            // 提取时间部分（不进行时差调整）
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const day = String(date.getDate()).padStart(2, '0');
@@ -239,36 +236,31 @@
             const minutes = String(date.getMinutes()).padStart(2, '0');
             const seconds = String(date.getSeconds()).padStart(2, '0');
             
-            // 输出与Excel文件相同的时间
+            // 输出与数据库一致的时间
             return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
         }
 
         /**
-         * 编辑时：将输入的文件时间转换为数据库存储时间（减去8小时）
+         * 编辑时：将输入的本地时间直接转换为数据库存储格式
+         * 不需要时差调整，因为数据库存储的就是本地时间
          */
         function inputToRawTime(localDateTimeString) {
             if (!localDateTimeString) return null;
             
-            // 解析输入的时间
+            // 直接解析输入的本地时间
             const date = new Date(`${localDateTimeString}:00`);
-            
-            // 减去8小时，匹配数据库存储格式
-            date.setHours(date.getHours() - 8);
-            
             return date.toISOString();
         }
 
         /**
-         * 编辑时：将数据库时间转换为文件时间（加上8小时）
+         * 编辑时：将数据库本地时间转换为输入框格式
+         * 不需要时差调整
          */
         function rawTimeToInput(rawTimeString) {
             if (!rawTimeString) return '';
             
-            // 解析数据库时间
+            // 直接解析数据库时间
             const date = new Date(rawTimeString);
-            
-            // 加上8小时，还原为文件时间
-            date.setHours(date.getHours() + 8);
             
             // 格式化为datetime-local需要的格式
             return date.toISOString().slice(0, 16);
@@ -401,7 +393,7 @@
                     return;
                 }
                 
-                // 填充表单，转换时间为文件原始时间
+                // 填充表单，直接使用数据库时间
                 document.getElementById('editId').value = data.id;
                 document.getElementById('editPlanId').value = data.plan_id || '';
                 document.getElementById('editStartTime').value = rawTimeToInput(data.start_time);
@@ -422,7 +414,7 @@
             const id = document.getElementById('editId').value;
             const inputStartTime = document.getElementById('editStartTime').value;
             
-            // 转换为数据库需要的时间格式（减去8小时）
+            // 直接转换为数据库需要的格式（无时间差调整）
             const data = {
                 plan_id: document.getElementById('editPlanId').value,
                 start_time: inputToRawTime(inputStartTime),
