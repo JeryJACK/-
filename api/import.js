@@ -9,105 +9,75 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 调试用：显示时间解析过程
-function logTimeParseStep(step, value) {
-  console.log(`[时间解析] ${step}:`, value);
+// 调试用：跟踪时间解析过程
+function logTimeProcessing(message, value) {
+  console.log(`[时间处理] ${message}:`, value);
 }
 
-// 核心修复：正确解析北京时间（确保小时部分正确）
+// 核心修复：正确解析北京时间（不做UTC转换，避免减去8小时）
 function parseBeijingTime(dateValue) {
   if (!dateValue) {
-    logTimeParseStep('空值', dateValue);
+    logTimeProcessing('空时间值', dateValue);
     return null;
   }
   
-  // 处理Excel数字日期格式（包含时间）
+  // 处理Excel数字日期格式（关键修复：正确提取时间部分）
   if (typeof dateValue === 'number') {
-    logTimeParseStep('Excel数字格式', dateValue);
+    logTimeProcessing('Excel数字格式原始值', dateValue);
     
-    // Excel日期是自1900年1月1日以来的天数（包含时间小数部分）
-    const excelEpoch = new Date(1900, 0, 1);
-    const days = Math.floor(dateValue);
-    const hours = (dateValue - days) * 24; // 提取小时部分
-    const minutes = (hours - Math.floor(hours)) * 60;
-    const seconds = (minutes - Math.floor(minutes)) * 60;
+    // Excel日期是自1900年1月1日以来的天数（小数部分为时间）
+    const baseDate = new Date(1900, 0, 1);
+    // 修正Excel的1900年闰年错误（Excel错误地认为1900是闰年）
+    const days = dateValue - 2;
+    const totalMilliseconds = days * 24 * 60 * 60 * 1000;
     
-    logTimeParseStep('提取的时间部分', `天:${days}, 时:${hours}, 分:${minutes}`);
+    // 创建日期对象（直接作为本地时间，即北京时间）
+    const date = new Date(baseDate.getTime() + totalMilliseconds);
     
-    // 修正Excel的1900年闰年错误
-    const adjustedDays = days - 2;
-    const date = new Date(excelEpoch);
-    date.setDate(excelEpoch.getDate() + adjustedDays);
-    
-    // 设置时间部分（北京时间）
-    date.setHours(Math.floor(hours));
-    date.setMinutes(Math.floor(minutes));
-    date.setSeconds(Math.floor(seconds));
-    
-    if (date.getTime() > 0) {
-      logTimeParseStep('解析结果', date.toLocaleString('zh-CN'));
+    if (!isNaN(date.getTime())) {
+      logTimeProcessing('Excel数字解析结果（北京时间）', date.toLocaleString('zh-CN'));
       return date;
     }
   }
   
-  // 处理字符串格式的日期时间
+  // 处理字符串格式时间
   if (typeof dateValue === 'string') {
-    logTimeParseStep('字符串格式', dateValue);
+    logTimeProcessing('字符串格式原始值', dateValue);
     
-    // 尝试直接解析（作为本地时间，即北京时间）
+    // 尝试直接解析为北京时间（不做时区转换）
     const date = new Date(dateValue);
     if (!isNaN(date.getTime())) {
-      logTimeParseStep('直接解析结果', date.toLocaleString('zh-CN'));
+      logTimeProcessing('字符串直接解析结果（北京时间）', date.toLocaleString('zh-CN'));
       return date;
     }
     
-    // 增强的中文日期时间格式处理（重点确保小时正确）
-    const timeFormats = [
-      // 带秒的完整格式
-      {
-        regex: /^(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})[日]?\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$/,
-        handler: (m) => ({y:m[1], m:m[2], d:m[3], h:m[4], mi:m[5], s:m[6]})
-      },
-      // 不带秒的格式
-      {
-        regex: /^(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})[日]?\s*(\d{1,2}):(\d{1,2})$/,
-        handler: (m) => ({y:m[1], m:m[2], d:m[3], h:m[4], mi:m[5], s:0})
-      },
-      // 仅日期
-      {
-        regex: /^(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})[日]?$/,
-        handler: (m) => ({y:m[1], m:m[2], d:m[3], h:0, mi:0, s:0})
-      },
-      // 月/日/年 格式
-      {
-        regex: /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(\d{1,2}):(\d{1,2})$/,
-        handler: (m) => ({y:m[3], m:m[1], d:m[2], h:m[4], mi:m[5], s:0})
-      }
+    // 增强的中文日期格式处理
+    const patterns = [
+      { regex: /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$/, parts: 7 },
+      { regex: /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{1,2})$/, parts: 6 },
+      { regex: /^(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$/, parts: 7 },
+      { regex: /^(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{1,2})$/, parts: 6 },
+      { regex: /^(\d{4})\/(\d{1,2})\/(\d{1,2})\s*(\d{1,2}):(\d{1,2})$/, parts: 6 }
     ];
     
-    for (const format of timeFormats) {
-      const match = dateValue.match(format.regex);
+    for (const pattern of patterns) {
+      const match = dateValue.match(pattern.regex);
       if (match) {
-        const parts = format.handler(match);
-        
-        // 转换为数字并验证范围
-        const year = parseInt(parts.y, 10);
-        const month = parseInt(parts.m, 10) - 1; // 月份从0开始
-        const day = parseInt(parts.d, 10);
-        const hours = parseInt(parts.h, 10);
-        const minutes = parseInt(parts.mi, 10);
-        const seconds = parseInt(parts.s, 10);
+        const year = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10) - 1; // 月份从0开始
+        const day = parseInt(match[3], 10);
+        const hours = pattern.parts >= 6 ? parseInt(match[4], 10) : 0;
+        const minutes = pattern.parts >= 6 ? parseInt(match[5], 10) : 0;
+        const seconds = pattern.parts === 7 ? parseInt(match[6], 10) : 0;
         
         // 验证时间范围
         if (hours < 0 || hours > 23) continue;
         if (minutes < 0 || minutes > 59) continue;
         if (seconds < 0 || seconds > 59) continue;
         
-        logTimeParseStep('解析的时间部分', `时:${hours}, 分:${minutes}, 秒:${seconds}`);
-        
         const date = new Date(year, month, day, hours, minutes, seconds);
         if (!isNaN(date.getTime())) {
-          logTimeParseStep('格式解析结果', date.toLocaleString('zh-CN'));
+          logTimeProcessing('格式匹配解析结果（北京时间）', date.toLocaleString('zh-CN'));
           return date;
         }
       }
@@ -118,11 +88,11 @@ function parseBeijingTime(dateValue) {
   return null;
 }
 
-// 格式化时间为PostgreSQL兼容的北京时间字符串
-function formatBeijingTimeForDB(date) {
+// 格式化时间为数据库存储格式（关键修复：直接使用北京时间，不转UTC）
+function formatTimeForDB(date) {
   if (!date) return null;
   
-  // 直接使用北京时间的各部分构建字符串（不做时区转换）
+  // 直接获取北京时间的各个部分（不做时区转换）
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -130,53 +100,55 @@ function formatBeijingTimeForDB(date) {
   const minutes = String(date.getMinutes()).padStart(2, '0');
   const seconds = String(date.getSeconds()).padStart(2, '0');
   
-  // 明确指定时区为北京时间
+  // 明确指定为北京时间时区（+08:00）
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}+08`;
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: '方法不允许，仅支持POST' });
-  }
-  
-  const auth = await verifyAuth(req);
-  if (!auth.success) {
-    return res.status(401).json({ error: auth.error });
-  }
-  
-  const { records } = req.body;
-  
-  if (!records || !Array.isArray(records) || records.length === 0) {
-    return res.status(400).json({ error: '没有提供有效的记录数据' });
-  }
-  
   try {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: '方法不允许，仅支持POST' });
+    }
+    
+    const auth = await verifyAuth(req);
+    if (!auth.success) {
+      return res.status(401).json({ error: auth.error });
+    }
+    
+    const { records } = req.body;
+    
+    if (!records || !Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ error: '没有提供有效的记录数据' });
+    }
+    
     await pool.query('BEGIN');
     
     let inserted = 0;
     const errors = [];
     
     for (let i = 0; i < records.length; i++) {
-      let timeValue;
       const record = records[i];
+      let timeValue;
       
       try {
         if (typeof record !== 'object' || record === null) {
-          throw new Error('记录格式无效，必须是对象');
+          throw new Error('记录必须是有效的对象');
         }
         
         // 获取时间值
         timeValue = record['开始时间'] || record.start_time || record['StartTime'];
         
         const beijingTime = parseBeijingTime(timeValue);
-        
         if (!beijingTime) {
-          throw new Error(`无法解析时间格式: ${timeValue || '未提供时间'}`);
+          throw new Error(`时间解析失败: ${timeValue || '未提供时间'}`);
         }
         
-        // 格式化为带北京时间时区的字符串
-        const dbTime = formatBeijingTimeForDB(beijingTime);
+        const dbTime = formatTimeForDB(beijingTime);
+        if (!dbTime) {
+          throw new Error('时间格式化为数据库格式失败');
+        }
         
+        // 执行插入（确保字段与表结构一致）
         await pool.query(
           `INSERT INTO raw_records 
            (plan_id, start_time, customer, satellite, station, 
@@ -184,11 +156,11 @@ export default async function handler(req, res) {
            VALUES ($1, $2::TIMESTAMPTZ, $3, $4, $5, $6, $7, $8)`,
           [
             record['计划ID'] || record.plan_id || null,
-            dbTime,  // 存储为带北京时间时区的时间
-            record['客户'] || record.customer || null,
-            record['卫星'] || record.satellite || null,
-            record['测站'] || record.station || null,
-            record['任务结果'] || record.task_result || null,
+            dbTime,  // 直接存储北京时间（带+08时区）
+            record['所属客户'] || record.customer || null,
+            record['卫星名称'] || record.satellite || null,
+            record['测站名称'] || record.station || null,
+            record['任务结果状态'] || record.task_result || null,
             record['任务类型'] || record.task_type || null,
             JSON.stringify(record)
           ]
@@ -199,10 +171,9 @@ export default async function handler(req, res) {
         errors.push({
           index: i,
           error: error.message,
-          originalTimeValue: timeValue !== undefined ? String(timeValue) : '未获取到时间值',
-          parsedTime: beijingTime ? beijingTime.toLocaleString('zh-CN') : '解析失败'
+          originalTime: timeValue !== undefined ? String(timeValue) : '无时间值'
         });
-        console.error(`处理第 ${i+1} 条记录失败:`, error);
+        console.error(`处理第${i+1}条记录失败:`, error);
       }
     }
     
@@ -210,15 +181,21 @@ export default async function handler(req, res) {
     
     res.json({
       success: true,
-      inserted: inserted,
+      inserted,
       total: records.length,
-      errors: errors,
-      message: `成功导入 ${inserted} 条记录，共 ${records.length} 条`
+      errors,
+      message: `成功导入${inserted}/${records.length}条记录`
     });
   } catch (error) {
-    await pool.query('ROLLBACK');
-    console.error('导入数据错误:', error);
-    res.status(500).json({ error: '导入数据失败: ' + error.message });
+    // 事务回滚并返回详细错误信息
+    if (pool) await pool.query('ROLLBACK');
+    console.error('导入接口错误:', error);
+    // 关键修复：返回具体错误信息，帮助前端调试
+    res.status(500).json({ 
+      error: '服务器处理失败',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }
     
