@@ -3,7 +3,7 @@ import { verifyAuth } from '../../lib/auth';
 
 let pool;
 if (!global._pgPool) {
-  pool = new Pool({ connectionString: process.env.your-random-secret-key-123   });
+  pool = new Pool({ connectionString: process.env.POSTGRES_URL  });
   global._pgPool = pool;
 } else {
   pool = global._pgPool;
@@ -198,5 +198,6 @@ export default async function handler(req, res) {
   }
 }
     
+
 
 
