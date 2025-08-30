@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 // 确保连接字符串正确处理
-const connectionString =process.env.your-random-secret-key-123 ;
+const connectionString =process.env.process.env.POSTGRES_URL ;
 
 if (!connectionString) {
   console.error('错误: 未设置POSTGRES_URL环境变量');
@@ -118,6 +118,7 @@ export default async function handler(req, res) {
     });
   }
 }
+
 
 
 
