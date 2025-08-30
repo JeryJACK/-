@@ -22,15 +22,6 @@
     </header>
 
     <main class="container mx-auto px-4 py-6">
-        <!-- 错误提示区域（全局） -->
-        <div id="globalError" class="mb-6 hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
-            <strong class="font-bold">错误: </strong>
-            <span class="block sm:inline" id="globalErrorMessage"></span>
-            <button onclick="this.parentElement.classList.add('hidden')" class="absolute top-0 bottom-0 right-0 px-4 py-3">
-                <i class="fa fa-times"></i>
-            </button>
-        </div>
-
         <!-- 数据导入 -->
         <section class="mb-8 bg-white rounded-lg p-6 shadow">
             <h2 class="text-lg font-semibold mb-4">数据导入</h2>
@@ -161,29 +152,14 @@
         const editModal = document.getElementById('editModal');
         const editForm = document.getElementById('editForm');
         const cancelEditBtn = document.getElementById('cancelEdit');
-        const globalError = document.getElementById('globalError');
-        const globalErrorMessage = document.getElementById('globalErrorMessage');
 
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
+            // 显示当前时区用于调试
+            console.log('前端时区:', Intl.DateTimeFormat().resolvedOptions().timeZone);
             loadData();
             setupEventListeners();
         });
-
-        // 显示全局错误信息
-        function showGlobalError(message, details) {
-            globalErrorMessage.textContent = message;
-            // 如果有详细信息，添加到错误提示
-            if (details) {
-                globalErrorMessage.innerHTML += `<div class="mt-2 text-sm">详细信息: ${details}</div>`;
-            }
-            globalError.classList.remove('hidden');
-        }
-
-        // 隐藏全局错误
-        function hideGlobalError() {
-            globalError.classList.add('hidden');
-        }
 
         // 设置事件监听
         function setupEventListeners() {
@@ -217,10 +193,7 @@
                 currentPage++;
                 loadData();
             });
-            refreshBtn.addEventListener('click', () => {
-                hideGlobalError();
-                loadData();
-            });
+            refreshBtn.addEventListener('click', loadData);
             
             // 退出登录
             logoutBtn.addEventListener('click', () => {
@@ -238,39 +211,37 @@
             });
         }
 
-        // 加载数据 - 关键修复：显示具体错误信息
+        // 加载数据
         async function loadData() {
             try {
-                hideGlobalError();
-                dataTableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">加载数据中...</td></tr>';
-                
                 const response = await fetch(`/api/records?page=${currentPage}&pageSize=${pageSize}`, {
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
                 });
                 
-                // 检查HTTP状态码
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => null);
-                    throw new Error(errorData?.error || `服务器错误 (${response.status})`, {
-                        cause: errorData?.details
-                    });
+                const data = await response.json();
+                
+                if (data.error) {
+                    showStatus(data.error, 'error');
+                    return;
                 }
                 
-                const data = await response.json();
+                // 调试用：显示原始时间数据
+                console.log('后端返回的时间数据:', data.records.map(r => ({
+                    id: r.id,
+                    displayed: r.start_time,
+                    original: r.original_utc_time
+                })));
                 
                 renderTable(data.records);
                 totalCountEl.textContent = data.total;
                 prevPageBtn.disabled = currentPage === 1;
                 nextPageBtn.disabled = currentPage * pageSize >= data.total;
             } catch (error) {
-                console.error('加载数据失败:', error);
-                dataTableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-danger">加载数据失败</td></tr>';
-                // 显示具体错误信息
-                showGlobalError(error.message, error.cause);
+                showStatus('加载数据失败: ' + error.message, 'error');
             }
         }
 
-        // 渲染表格
+        // 渲染表格 - 关键修复：直接使用后端返回的北京时间，不做额外转换
         function renderTable(records) {
             if (records.length === 0) {
                 dataTableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">没有数据</td></tr>';
@@ -278,12 +249,25 @@
             }
             
             dataTableBody.innerHTML = records.map(record => {
-                // 直接使用后端返回的北京时间字符串
-                const beijingTime = record.start_time || '-';
+                // 后端已返回正确的北京时间字符串，直接格式化显示
+                // 不使用new Date()进行二次转换，避免时区问题
+                const beijingTimeStr = record.start_time;
+                let formattedTime = '-';
+                
+                if (beijingTimeStr) {
+                    // 直接解析字符串中的日期时间部分
+                    const dateTimeParts = beijingTimeStr.split(' ');
+                    if (dateTimeParts.length === 2) {
+                        formattedTime = `${dateTimeParts[0]} ${dateTimeParts[1]}`;
+                    } else {
+                        formattedTime = beijingTimeStr;
+                    }
+                }
+                
                 return `
                 <tr>
                     <td class="px-6 py-4 whitespace-nowrap">${record.plan_id || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${beijingTime}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${formattedTime}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.customer || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.satellite || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.task_result || '-'}</td>
@@ -308,7 +292,6 @@
             // 重置状态区域
             importStatus.classList.add('hidden');
             validationErrors.classList.add('hidden');
-            hideGlobalError();
             
             showStatus('正在解析文件...');
             
@@ -346,13 +329,6 @@
                             body: JSON.stringify({ records: validRecords })
                         });
                         
-                        if (!response.ok) {
-                            const errorData = await response.json().catch(() => null);
-                            throw new Error(errorData?.error || `上传失败 (${response.status})`, {
-                                cause: errorData?.details
-                            });
-                        }
-                        
                         const result = await response.json();
                         
                         if (result.success) {
@@ -362,7 +338,7 @@
                             if (result.errors.length > 0) {
                                 setTimeout(() => {
                                     const errorDetails = result.errors.map(err => 
-                                        `第 ${err.index + 1} 条: ${err.error}`
+                                        `第 ${err.index + 1} 条: ${err.error} (原始值: ${err.originalTimeValue})`
                                     ).join('\n');
                                     alert(`部分记录导入失败:\n${errorDetails}`);
                                 }, 1000);
@@ -372,9 +348,6 @@
                         }
                     } catch (error) {
                         showStatus('处理文件失败: ' + error.message, 'error');
-                        if (error.cause) {
-                            console.error('上传详细错误:', error.cause);
-                        }
                     }
                 };
                 reader.readAsArrayBuffer(file);
@@ -465,22 +438,23 @@
         // 编辑数据
         window.editData = async (id) => {
             try {
-                const response = await fetch(`/api/records?id=${id}`, {
+                const response = await fetch(`/api/records/${id}`, {
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
                 });
                 
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => null);
-                    throw new Error(errorData?.error || `获取记录失败 (${response.status})`);
-                }
-                
                 const data = await response.json();
+                
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
                 
                 document.getElementById('editId').value = data.id;
                 document.getElementById('editPlanId').value = data.plan_id || '';
                 
+                // 处理时间显示 - 转换为datetime-local格式（北京时间）
                 if (data.start_time) {
-                    // 转换为datetime-local格式
+                    // 将后端返回的北京时间转换为ISO格式
                     const date = new Date(data.start_time);
                     const dateTimeLocal = date.toISOString().slice(0, 16);
                     document.getElementById('editStartTime').value = dateTimeLocal;
@@ -521,11 +495,6 @@
                     body: JSON.stringify(data)
                 });
                 
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => null);
-                    throw new Error(errorData?.error || `保存失败 (${response.status})`);
-                }
-                
                 const result = await response.json();
                 
                 if (result.success) {
@@ -548,11 +517,6 @@
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
                 });
-                
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => null);
-                    throw new Error(errorData?.error || `删除失败 (${response.status})`);
-                }
                 
                 const result = await response.json();
                 
