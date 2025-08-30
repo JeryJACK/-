@@ -1,75 +1,68 @@
 import { Pool } from 'pg';
 import { verifyAuth } from '../../lib/auth';
 
-// 确保只创建一个数据库连接池
 let pool;
-try {
-  if (!global._pgPool) {
-    // 检查环境变量是否存在
-    if (!process.env.POSTGRES_URL) {
-      throw new Error('POSTGRES_URL环境变量未设置');
-    }
-    pool = new Pool({ connectionString: process.env.POSTGRES_URL });
-    global._pgPool = pool;
-  } else {
-    pool = global._pgPool;
-  }
-} catch (error) {
-  console.error('数据库连接初始化失败:', error);
-  // 导出一个错误处理函数
-  export default function handler(req, res) {
-    res.status(500).json({ error: '服务器初始化失败: ' + error.message });
-  }
-  // 终止模块执行
-  process.exit(0);
+if (!global._pgPool) {
+  pool = new Pool({ connectionString: process.env.POSTGRES_URL });
+  global._pgPool = pool;
+} else {
+  pool = global._pgPool;
 }
 
 /**
  * 精确转换Excel日期数字为JavaScript日期
+ * Excel日期是自1900年1月1日以来的天数（包含时间小数部分）
  */
 function excelDateToJSDate(excelDate) {
-  try {
-    const isLeapYearError = excelDate >= 60;
-    const daysToAdd = isLeapYearError ? excelDate - 2 : excelDate - 1;
-    const baseDate = new Date(1899, 11, 30);
-    const totalMilliseconds = daysToAdd * 86400000;
-    const date = new Date(baseDate.getTime() + totalMilliseconds);
-    
-    if (date.toString() === 'Invalid Date') {
-      throw new Error('转换结果为无效日期');
-    }
-    return date;
-  } catch (error) {
-    console.error('Excel日期转换失败:', error);
-    throw error;
-  }
+  // 处理Excel的1900年闰年错误
+  const isLeapYearError = excelDate >= 60;
+  const daysToAdd = isLeapYearError ? excelDate - 2 : excelDate - 1;
+  
+  // 从1900年1月1日开始计算
+  const baseDate = new Date(1899, 11, 30); // 实际上Excel起始日期是1899-12-30
+  
+  // 计算总毫秒数（一天 = 86400000毫秒）
+  const totalMilliseconds = daysToAdd * 86400000;
+  
+  // 创建日期对象
+  const date = new Date(baseDate.getTime() + totalMilliseconds);
+  
+  return date;
 }
 
 /**
  * 尝试多种方式解析日期
  */
 function parseDate(value) {
+  // 记录调试信息，帮助排查问题
+  console.log(`尝试解析日期: ${value} (类型: ${typeof value})`);
+  
   if (!value) return { success: false, error: '空值' };
   
   // 处理数字类型的Excel日期
   if (typeof value === 'number' || !isNaN(Number(value))) {
     try {
       const numValue = Number(value);
+      // Excel日期通常在25569（1970-01-01）到很大的数字之间
       if (numValue > 1 && numValue < 100000) {
         const date = excelDateToJSDate(numValue);
-        return {
-          success: true,
-          date: date.toISOString(),
-          method: 'excel数字转换'
-        };
+        // 验证日期有效性
+        if (date.toString() !== 'Invalid Date') {
+          return {
+            success: true,
+            date: date.toISOString(),
+            method: 'excel数字转换'
+          };
+        }
       }
     } catch (error) {
-      // 不抛出，继续尝试其他方法
+      console.log('Excel日期转换失败:', error.message);
     }
   }
   
   // 处理字符串类型的日期
   if (typeof value === 'string') {
+    // 尝试直接解析
     const date = new Date(value);
     if (date.toString() !== 'Invalid Date') {
       return {
@@ -79,6 +72,7 @@ function parseDate(value) {
       };
     }
     
+    // 尝试替换分隔符
     const normalized = value.replace(/-/g, '/').replace(/\./g, '/');
     const date2 = new Date(normalized);
     if (date2.toString() !== 'Invalid Date') {
@@ -90,6 +84,7 @@ function parseDate(value) {
     }
   }
   
+  // 所有尝试都失败
   return {
     success: false,
     error: `无法解析为有效日期: ${value} (类型: ${typeof value})`
@@ -97,24 +92,23 @@ function parseDate(value) {
 }
 
 export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: '方法不允许' });
+  }
+
+  // 验证身份
+  const auth = await verifyAuth(req);
+  if (!auth.success) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { records } = req.body;
+  
+  if (!records || !Array.isArray(records)) {
+    return res.status(400).json({ error: '无效的记录数据' });
+  }
+
   try {
-    if (req.method !== 'POST') {
-      return res.status(405).json({ error: '方法不允许，仅支持POST' });
-    }
-
-    // 验证身份
-    const auth = await verifyAuth(req);
-    if (!auth.success) {
-      return res.status(401).json({ error: auth.error || '认证失败' });
-    }
-
-    // 验证请求体
-    if (!req.body || !Array.isArray(req.body.records)) {
-      return res.status(400).json({ error: '无效的请求数据，records必须是数组' });
-    }
-
-    const { records } = req.body;
-    
     // 开始事务
     await pool.query('BEGIN');
     
@@ -126,16 +120,24 @@ export default async function handler(req, res) {
         // 尝试找到日期字段并转换
         const dateFields = ['start_time', 'date', 'time', '开始时间', '日期', 'StartTime'];
         let startTime = null;
+        let dateFieldUsed = null;
         
         for (const field of dateFields) {
           if (record[field] !== undefined) {
             const parseResult = parseDate(record[field]);
             if (parseResult.success) {
               startTime = parseResult.date;
+              dateFieldUsed = field;
+              console.log(`行 ${index + 1}: 成功解析${field}字段，使用${parseResult.method}`);
               break;
+            } else {
+              console.log(`行 ${index + 1}: ${field}字段解析失败 - ${parseResult.error}`);
             }
           }
         }
+        
+        // 如果找不到有效日期，仍然尝试插入记录（日期为null）
+        console.log(`行 ${index + 1}: 最终使用的日期值: ${startTime}`);
         
         // 插入记录
         const result = await pool.query(
@@ -146,12 +148,12 @@ export default async function handler(req, res) {
           [
             record.plan_id || record.planId || record['计划ID'] || record['任务ID'] || null,
             startTime,
-            record.customer || record['客户'] || null,
-            record.satellite || record['卫星'] || null,
-            record.station || record['测站'] || record['站点'] || null,
-            record.task_result || record['任务结果'] || null,
+            record.customer || record['所属客户'] || null,
+            record.satellite || record['卫星名称'] || null,
+            record.station || record['测站名称'] || record['站点'] || null,
+            record.task_result || record['任务结果状态'] || null,
             record.task_type || record['任务类型'] || null,
-            record // 保存原始数据
+            record // 保存原始数据，便于排查问题
           ]
         );
         
@@ -159,14 +161,20 @@ export default async function handler(req, res) {
           inserted++;
         }
       } catch (error) {
+        const errorMsg = error.message.includes('timestamp') 
+          ? `时间戳格式错误: ${error.message}`
+          : error.message;
+          
         errors.push({
-          row: index + 1,
-          error: error.message,
+          row: index + 1, // 行号从1开始
+          error: errorMsg,
           data: {
-            plan_id: record.plan_id || null,
-            date_value: record.start_time || null
+            // 只保留关键字段，避免数据过大
+            plan_id: record.plan_id || record.planId || record['计划ID'] || null,
+            date_value: record.start_time || record.date || record['开始时间'] || null
           }
         });
+        console.error(`处理第${index + 1}行时出错:`, error);
       }
     }
     
@@ -183,20 +191,10 @@ export default async function handler(req, res) {
         : `全部导入成功，共导入 ${inserted} 条`
     });
   } catch (error) {
-    // 发生错误时回滚事务
-    try {
-      await pool.query('ROLLBACK');
-    } catch (rollbackError) {
-      console.error('事务回滚失败:', rollbackError);
-    }
-    
+    // 回滚事务
+    await pool.query('ROLLBACK');
     console.error('导入数据错误:', error);
-    
-    // 确保返回JSON格式的错误
-    res.status(500).json({ 
-      error: '导入失败: ' + error.message,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    res.status(500).json({ error: '导入失败: ' + error.message });
   }
 }
     
