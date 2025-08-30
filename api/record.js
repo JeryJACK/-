@@ -37,4 +37,3 @@ module.exports = async (req, res) => {
     res.status(500).json({ error: '获取数据失败: ' + error.message });
   }
 };
-    
