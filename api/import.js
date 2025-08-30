@@ -9,7 +9,7 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 直接在当前文件中实现日期解析功能，无需额外模块
+// 处理日期格式转换
 function parseDate(dateString) {
   if (!dateString) return null;
   
@@ -103,3 +103,4 @@ module.exports = async function handler(req, res) {
     res.status(500).json({ error: '服务器错误，导入失败' });
   }
 };
+    
