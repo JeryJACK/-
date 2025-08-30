@@ -9,25 +9,64 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 优化的日期时间解析函数，优先处理标准格式
+// 精确解析Excel数字格式的日期时间
+function parseExcelDateTime(excelValue) {
+  // Excel日期是从1900年1月1日开始的天数，包含小数部分表示时间
+  const days = Math.floor(excelValue);
+  const fraction = excelValue - days; // 小数部分表示一天中的时间比例
+  
+  // 处理Excel 1900年闰年bug（Excel错误地认为1900年是闰年）
+  const excelEpoch = new Date(1899, 11, 30); // 实际上应该从1899-12-30开始计算
+  
+  // 计算日期部分
+  const date = new Date(excelEpoch);
+  date.setDate(excelEpoch.getDate() + days);
+  
+  // 计算时间部分（小数部分转换为小时、分钟、秒）
+  const totalSeconds = Math.floor(fraction * 24 * 60 * 60); // 一天的总秒数
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  
+  // 设置时间部分
+  date.setHours(hours, minutes, seconds, 0);
+  
+  return date;
+}
+
+// 完整的日期时间解析函数
 function parseDateTime(dateTimeValue) {
   if (!dateTimeValue) return null;
   
-  // 转换为字符串处理（如果是数字）
-  const valueStr = typeof dateTimeValue === 'number' 
-    ? dateTimeValue.toString() 
-    : dateTimeValue.toString().trim();
+  // 1. 处理Excel数字格式（优先处理，因为这是当前问题的核心）
+  if (typeof dateTimeValue === 'number' || !isNaN(parseFloat(dateTimeValue))) {
+    const excelValue = parseFloat(dateTimeValue);
+    // 合理的Excel日期范围（1970-2100年之间）
+    if (excelValue > 25569 && excelValue < 40000) {
+      try {
+        const date = parseExcelDateTime(excelValue);
+        if (!isNaN(date.getTime())) {
+          const isoString = date.toISOString();
+          console.log(`Excel数字解析成功: ${excelValue} -> ${isoString}`);
+          return isoString;
+        }
+      } catch (error) {
+        console.error(`Excel数字解析失败: ${excelValue}`, error);
+      }
+    }
+  }
   
-  // 1. 优先处理标准的 "YYYY-MM-DD HH:MM:SS" 格式
+  // 2. 处理标准字符串格式 "YYYY-MM-DD HH:MM:SS"
+  const valueStr = typeof dateTimeValue === 'string' ? dateTimeValue.trim() : '';
   const standardPattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
   const match = valueStr.match(standardPattern);
+  
   if (match) {
     try {
       const [, year, month, day, hours, minutes, seconds] = match;
-      // 注意：JavaScript月份从0开始，所以需要减1
       const date = new Date(
         parseInt(year, 10),
-        parseInt(month, 10) - 1,
+        parseInt(month, 10) - 1, // 月份从0开始
         parseInt(day, 10),
         parseInt(hours, 10),
         parseInt(minutes, 10),
@@ -35,87 +74,24 @@ function parseDateTime(dateTimeValue) {
       );
       
       if (!isNaN(date.getTime())) {
-        console.log(`标准格式解析成功: ${valueStr}`);
-        return date.toISOString();
+        const isoString = date.toISOString();
+        console.log(`标准格式解析成功: ${valueStr} -> ${isoString}`);
+        return isoString;
       }
     } catch (error) {
       console.error(`标准格式解析失败: ${valueStr}`, error);
     }
   }
   
-  // 2. 处理Excel数字日期格式
-  if (!isNaN(parseFloat(valueStr)) && isFinite(valueStr)) {
-    const excelDate = parseFloat(valueStr);
-    const excelEpoch = new Date(1900, 0, 1);
-    const daysToAdd = excelDate - 2;
-    const date = new Date(excelEpoch);
-    date.setDate(excelEpoch.getDate() + daysToAdd);
-    
-    if (date.getTime() > 0) {
-      console.log(`Excel数字格式解析成功: ${valueStr} -> ${date.toISOString()}`);
-      return date.toISOString();
-    }
-  }
-  
-  // 3. 处理其他常见格式
-  const otherPatterns = [
-    // 带秒的格式
-    /^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{2}):(\d{2})$/,
-    // 不带秒的格式
-    /^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{2})$/,
-    // 中文格式
-    /^(\d{4})年(\d{1,2})月(\d{1,2})日 (\d{1,2}):(\d{2}):(\d{2})$/,
-    // 斜杠格式
-    /^(\d{2})\/(\d{2})\/(\d{4}) (\d{1,2}):(\d{2}):(\d{2})$/
-  ];
-  
-  for (const pattern of otherPatterns) {
-    const otherMatch = valueStr.match(pattern);
-    if (otherMatch) {
-      try {
-        let year, month, day, hours = 0, minutes = 0, seconds = 0;
-        
-        if (otherMatch.length === 7) {
-          [, year, month, day, hours, minutes, seconds] = otherMatch;
-        } else if (otherMatch.length === 6) {
-          [, year, month, day, hours, minutes] = otherMatch;
-        }
-        
-        // 处理月份（JavaScript月份从0开始）
-        month = parseInt(month, 10) - 1;
-        day = parseInt(day, 10);
-        year = parseInt(year, 10);
-        hours = parseInt(hours, 10);
-        minutes = parseInt(minutes, 10);
-        seconds = parseInt(seconds || 0, 10);
-        
-        // 处理可能的两位数年份
-        if (year < 100) {
-          year += 2000;
-        }
-        
-        // 验证时间范围
-        if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60 && seconds >= 0 && seconds < 60) {
-          const date = new Date(year, month, day, hours, minutes, seconds);
-          if (!isNaN(date.getTime())) {
-            console.log(`其他格式解析成功: ${valueStr} -> ${date.toISOString()}`);
-            return date.toISOString();
-          }
-        }
-      } catch (error) {
-        console.error(`其他格式解析失败: ${valueStr}`, error);
-      }
-    }
-  }
-  
-  // 4. 尝试使用JavaScript原生解析作为最后的手段
-  const date = new Date(valueStr);
+  // 3. 尝试原生解析作为最后的手段
+  const date = new Date(dateTimeValue);
   if (!isNaN(date.getTime())) {
-    console.log(`原生解析成功: ${valueStr} -> ${date.toISOString()}`);
-    return date.toISOString();
+    const isoString = date.toISOString();
+    console.log(`原生解析成功: ${dateTimeValue} -> ${isoString}`);
+    return isoString;
   }
   
-  console.warn(`所有解析方法均失败: ${valueStr}`);
+  console.warn(`所有解析方法均失败: ${dateTimeValue}`);
   return null;
 }
 
