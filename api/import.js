@@ -4,11 +4,6 @@ import { verifyAuth } from '../lib/auth';
 // 初始化数据库连接池
 let pool;
 if (!global._pgPool) {
-  // 从环境变量获取数据库连接字符串
-  if (!process.env.POSTGRES_URL) {
-    console.error('缺少POSTGRES_URL环境变量');
-  }
-  
   pool = new Pool({ 
     connectionString: process.env.POSTGRES_URL,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
@@ -29,16 +24,14 @@ if (!global._pgPool) {
 }
 
 /**
- * 从记录中提取原始时间值，不做任何转换
+ * 从记录中提取原始时间值
  * @param {Object} record - 单条记录数据
  * @returns {string|null} 原始时间字符串或null
  */
 function extractRawTime(record) {
-  // 尝试从不同可能的字段名获取时间值
   const timeFields = ['开始时间', 'start_time', 'StartTime', '开始日期', 'date'];
   for (const field of timeFields) {
     if (record.hasOwnProperty(field) && record[field] !== undefined && record[field] !== null) {
-      // 直接返回原始值的字符串形式
       return String(record[field]);
     }
   }
@@ -46,12 +39,27 @@ function extractRawTime(record) {
 }
 
 /**
- * 主处理函数
- * @param {Object} req - 请求对象
- * @param {Object} res - 响应对象
+ * 检查表格是否包含指定字段
+ * @param {string} table - 表名
+ * @param {string} column - 字段名
+ * @returns {boolean} 是否包含字段
  */
+async function hasColumn(table, column) {
+  try {
+    const result = await pool.query(
+      `SELECT column_name 
+       FROM information_schema.columns 
+       WHERE table_name = $1 AND column_name = $2`,
+      [table, column]
+    );
+    return result.rows.length > 0;
+  } catch (error) {
+    console.error(`检查字段${column}存在性失败:`, error);
+    return false;
+  }
+}
+
 export default async function handler(req, res) {
-  // 只允许POST方法
   if (req.method !== 'POST') {
     return res.status(405).json({ 
       success: false, 
@@ -59,7 +67,7 @@ export default async function handler(req, res) {
     });
   }
   
-  // 验证用户身份
+  // 验证身份
   const auth = await verifyAuth(req);
   if (!auth.success) {
     return res.status(401).json({ 
@@ -78,89 +86,90 @@ export default async function handler(req, res) {
   }
   
   try {
-    // 开始数据库事务
+    // 检查是否存在start_time_raw字段
+    const hasStartTimeRaw = await hasColumn('raw_records', 'start_time_raw');
+    
     await pool.query('BEGIN');
     
     let insertedCount = 0;
     const importErrors = [];
     
-    // 逐条处理记录
     for (let i = 0; i < records.length; i++) {
       const record = records[i];
       
       try {
-        // 提取原始时间值
         const rawTime = extractRawTime(record);
         
-        // 插入数据库
-        const result = await pool.query(
-          `INSERT INTO raw_records 
-           (plan_id, start_time, start_time_raw, customer, satellite, 
-            station, task_result, task_type, raw_data, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-           RETURNING id`,
-          [
-            // 计划ID
-            record['计划ID'] || record.plan_id || record.planId || null,
-            // 开始时间（原始格式）
+        // 根据字段是否存在动态调整SQL
+        let query, params;
+        if (hasStartTimeRaw) {
+          // 存在start_time_raw字段
+          query = `INSERT INTO raw_records 
+                   (plan_id, start_time, start_time_raw, customer, satellite, 
+                    station, task_result, task_type, raw_data, created_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+                   RETURNING id`;
+          params = [
+            record['计划ID'] || record.plan_id || null,
             rawTime,
-            // 原始时间备份
-            rawTime,
-            // 客户信息
-            record['所属客户'] || record.customer || null,
-            // 卫星信息
-            record['卫星名称'] || record.satellite || null,
-            // 测站信息
-            record['测站，名称'] || record.station || null,
-            // 任务结果
-            record['任务结果状态'] || record.taskResult || null,
-            // 任务类型
-            record['任务类型'] || record.taskType || null,
-            // 原始数据备份
+            rawTime,  // 存储到start_time_raw
+            record['客户'] || record.customer || null,
+            record['卫星'] || record.satellite || null,
+            record['测站'] || record.station || null,
+            record['任务结果'] || record.task_result || null,
+            record['任务类型'] || record.task_type || null,
             JSON.stringify(record)
-          ]
-        );
+          ];
+        } else {
+          // 不存在start_time_raw字段，只使用start_time
+          query = `INSERT INTO raw_records 
+                   (plan_id, start_time, customer, satellite, 
+                    station, task_result, task_type, raw_data, created_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                   RETURNING id`;
+          params = [
+            record['计划ID'] || record.plan_id || null,
+            rawTime,  // 只存储到start_time
+            record['客户'] || record.customer || null,
+            record['卫星'] || record.satellite || null,
+            record['测站'] || record.station || null,
+            record['任务结果'] || record.task_result || null,
+            record['任务类型'] || record.task_type || null,
+            JSON.stringify(record)
+          ];
+        }
         
-        // 记录成功插入的ID
+        const result = await pool.query(query, params);
         if (result.rows && result.rows[0]) {
           insertedCount++;
         }
       } catch (error) {
-        // 记录错误信息
         importErrors.push({
           index: i,
-          record: { ...record }, // 复制记录对象
           error: error.message,
-          timestamp: new Date().toISOString()
+          record: { ...record }
         });
         console.error(`处理第 ${i + 1} 条记录失败:`, error.message);
       }
     }
     
-    // 提交事务
     await pool.query('COMMIT');
     
-    // 返回处理结果
     return res.status(200).json({
       success: true,
       message: `导入完成，成功导入 ${insertedCount} 条记录，共 ${records.length} 条`,
       inserted: insertedCount,
       total: records.length,
-      errors: importErrors,
-      timestamp: new Date().toISOString()
+      errors: importErrors
     });
     
   } catch (error) {
-    // 发生严重错误，回滚事务
     await pool.query('ROLLBACK');
     console.error('导入过程发生错误:', error);
-    
     return res.status(500).json({
       success: false,
-      error: '服务器处理错误: ' + error.message,
-      timestamp: new Date().toISOString()
+      error: '服务器处理错误: ' + error.message
     });
   }
 }
     
-
