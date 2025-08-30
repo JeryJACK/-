@@ -1,5 +1,5 @@
-import { Pool } from 'pg';
-import { verifyAuth } from '../../lib/auth';
+const { Pool } = require('pg');
+const { verifyAuth } = require('../../lib/auth');
 
 let pool;
 if (!global._pgPool) {
@@ -9,7 +9,7 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // 验证身份
   const auth = await verifyAuth(req);
   if (!auth.success) {
@@ -55,4 +55,5 @@ export default async function handler(req, res) {
     console.error('记录操作错误:', error);
     res.status(500).json({ error: '服务器错误' });
   }
-}
+};
+    
