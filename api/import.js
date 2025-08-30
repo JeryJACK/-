@@ -3,62 +3,23 @@ import { verifyAuth } from '../lib/auth';
 
 let pool;
 if (!global._pgPool) {
-  pool = new Pool({ 
-    connectionString: process.env.POSTGRES_URL,
-    ssl: { rejectUnauthorized: false } // 确保SSL连接正确
-  });
+  pool = new Pool({ connectionString: process.env.POSTGRES_URL });
   global._pgPool = pool;
 } else {
   pool = global._pgPool;
 }
 
-// 精确解析Excel日期时间
-function parseExcelDateTime(excelValue) {
-  const days = Math.floor(excelValue);
-  const fraction = excelValue - days;
-  
-  // 修正Excel 1900年闰年bug
-  const excelEpoch = new Date(1899, 11, 30);
-  const date = new Date(excelEpoch);
-  date.setDate(excelEpoch.getDate() + days);
-  
-  // 精确计算时间部分
-  const totalSeconds = Math.floor(fraction * 24 * 60 * 60);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  
-  date.setHours(hours, minutes, seconds, 0);
-  return date;
-}
-
-// 完整的日期时间解析函数
+// 优化的日期时间解析函数，优先处理标准格式
 function parseDateTime(dateTimeValue) {
   if (!dateTimeValue) return null;
   
-  // 处理Excel数字格式
-  if (typeof dateTimeValue === 'number' || !isNaN(parseFloat(dateTimeValue))) {
-    const excelValue = parseFloat(dateTimeValue);
-    if (excelValue > 25569 && excelValue < 40000) { // 合理日期范围
-      try {
-        const date = parseExcelDateTime(excelValue);
-        if (!isNaN(date.getTime())) {
-          return date; // 返回Date对象而非字符串，避免转换问题
-        }
-      } catch (error) {
-        console.error(`Excel解析失败: ${excelValue}`, error);
-      }
-    }
-  }
-  
-  // 处理标准字符串格式
-  const valueStr = typeof dateTimeValue === 'string' ? dateTimeValue.trim() : '';
+  // 1. 首先处理标准的"YYYY-MM-DD HH:mm:ss"格式（你的情况）
   const standardPattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
-  const match = valueStr.match(standardPattern);
-  
-  if (match) {
-    try {
-      const [, year, month, day, hours, minutes, seconds] = match;
+  if (typeof dateTimeValue === 'string') {
+    const standardMatch = dateTimeValue.match(standardPattern);
+    if (standardMatch) {
+      const [, year, month, day, hours, minutes, seconds] = standardMatch;
+      // 月份减1因为JavaScript月份从0开始
       const date = new Date(
         parseInt(year, 10),
         parseInt(month, 10) - 1,
@@ -68,20 +29,72 @@ function parseDateTime(dateTimeValue) {
         parseInt(seconds, 10)
       );
       if (!isNaN(date.getTime())) {
-        return date;
+        console.log(`标准格式解析成功: ${dateTimeValue} -> ${date.toISOString()}`);
+        return date.toISOString();
       }
-    } catch (error) {
-      console.error(`标准格式解析失败: ${valueStr}`, error);
     }
   }
   
-  // 原生解析
-  const date = new Date(dateTimeValue);
-  if (!isNaN(date.getTime())) {
-    return date;
+  // 2. 处理Excel数字日期时间格式
+  if (typeof dateTimeValue === 'number') {
+    const excelEpoch = new Date(1900, 0, 1);
+    const daysToAdd = dateTimeValue - 2;
+    const date = new Date(excelEpoch);
+    date.setDate(excelEpoch.getDate() + daysToAdd);
+    
+    if (date.getTime() > 0) {
+      return date.toISOString();
+    }
   }
   
-  console.warn(`所有解析方法均失败: ${dateTimeValue}`);
+  // 3. 处理其他常见的日期时间格式
+  if (typeof dateTimeValue === 'string') {
+    // 清理字符串
+    const cleaned = dateTimeValue.trim();
+    
+    // 尝试直接解析
+    const date = new Date(cleaned);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+    
+    // 处理其他可能的格式
+    const otherPatterns = [
+      /^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{2})$/, // YYYY-MM-DD HH:mm
+      /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})$/, // MM/DD/YYYY HH:mm:ss
+      /^(\d{4})年(\d{1,2})月(\d{1,2})日 (\d{1,2}):(\d{2}):(\d{2})$/, // 中文日期时间
+    ];
+    
+    for (const pattern of otherPatterns) {
+      const match = cleaned.match(pattern);
+      if (match) {
+        let year, month, day, hours = 0, minutes = 0, seconds = 0;
+        
+        if (match.length === 7) {
+          [, year, month, day, hours, minutes, seconds] = match;
+        } else if (match.length === 6) {
+          [, year, month, day, hours, minutes] = match;
+        }
+        
+        // 处理月份（JavaScript月份从0开始）
+        month = parseInt(month, 10) - 1;
+        const date = new Date(
+          parseInt(year, 10),
+          month,
+          parseInt(day, 10),
+          parseInt(hours, 10),
+          parseInt(minutes, 10),
+          parseInt(seconds || 0, 10)
+        );
+        
+        if (!isNaN(date.getTime())) {
+          return date.toISOString();
+        }
+      }
+    }
+  }
+  
+  console.warn(`无法解析的日期时间格式: ${dateTimeValue} (类型: ${typeof dateTimeValue})`);
   return null;
 }
 
@@ -111,39 +124,21 @@ export default async function handler(req, res) {
       const record = records[i];
       
       try {
+        // 获取时间值（支持多种可能的字段名）
         const timeValue = record['开始时间'] || record.start_time || record['StartTime'];
-        const dateObj = parseDateTime(timeValue);
+        const startTime = parseDateTime(timeValue);
         
-        if (!dateObj) {
-          errors.push({
-            index: i,
-            error: '无法解析日期时间',
-            originalValue: timeValue
-          });
-          continue;
+        if (!startTime) {
+          throw new Error(`无法解析时间格式: ${timeValue}`);
         }
         
-        // 关键修复：直接使用Date对象并打印调试信息
-        const isoString = dateObj.toISOString();
-        console.log(`准备插入数据库的时间: ${isoString}`);
-        console.log(`日期对象详情:`, {
-          year: dateObj.getUTCFullYear(),
-          month: dateObj.getUTCMonth() + 1,
-          day: dateObj.getUTCDate(),
-          hours: dateObj.getUTCHours(),
-          minutes: dateObj.getUTCMinutes(),
-          seconds: dateObj.getUTCSeconds()
-        });
-        
-        // 执行插入时使用参数化查询，确保时间完整传递
-        const result = await pool.query(
+        await pool.query(
           `INSERT INTO raw_records 
            (plan_id, start_time, customer, satellite, station, task_result, task_type, raw)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           RETURNING start_time`, // 返回实际插入的时间
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
             record['计划ID'] || record.plan_id || null,
-            isoString, // 使用ISO字符串插入
+            startTime,
             record['客户'] || record.customer || null,
             record['卫星'] || record.satellite || null,
             record['测站'] || record.station || null,
@@ -153,16 +148,12 @@ export default async function handler(req, res) {
           ]
         );
         
-        // 验证数据库实际存储的时间
-        const storedTime = result.rows[0].start_time;
-        console.log(`数据库实际存储的时间: ${storedTime.toISOString()}`);
-        
         inserted++;
       } catch (error) {
         errors.push({
           index: i,
           error: error.message,
-          originalValue: record['开始时间'] || record.start_time,
+          originalTimeValue: record['开始时间'] || record.start_time,
           record: record
         });
         console.error(`处理第 ${i+1} 条记录失败:`, error);
