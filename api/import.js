@@ -110,17 +110,15 @@ export default async function handler(req, res) {
     const errors = [];
     
     for (let i = 0; i < records.length; i++) {
-      // 提前声明timeValue，避免未定义错误
       let timeValue;
       const record = records[i];
       
       try {
-        // 确保record是对象
         if (typeof record !== 'object' || record === null) {
           throw new Error('记录格式无效，必须是对象');
         }
         
-        // 安全获取时间值
+        // 获取时间值
         timeValue = record['开始时间'] || record.start_time || record['StartTime'];
         
         const beijingTime = parseBeijingTime(timeValue);
@@ -131,33 +129,31 @@ export default async function handler(req, res) {
         
         const dbTime = formatBeijingTimeForDB(beijingTime);
         
+        // 移除对start_time_raw字段的引用
         await pool.query(
           `INSERT INTO raw_records 
            (plan_id, start_time, customer, satellite, station, 
-            task_result, task_type, raw, start_time_raw)
-           VALUES ($1, $2::TIMESTAMPTZ, $3, $4, $5, $6, $7, $8, $9)`,
+            task_result, task_type, raw)
+           VALUES ($1, $2::TIMESTAMPTZ, $3, $4, $5, $6, $7, $8)`,
           [
             record['计划ID'] || record.plan_id || null,
-            dbTime,
+            dbTime,  // 存储为北京时间
             record['所属客户'] || record.customer || null,
             record['卫星名称'] || record.satellite || null,
             record['测站名称'] || record.station || null,
             record['任务结果状态'] || record.task_result || null,
             record['任务类型'] || record.task_type || null,
-            JSON.stringify(record),
-            String(timeValue || '无时间数据')
+            JSON.stringify(record)  // 存储原始数据
           ]
         );
         
         inserted++;
       } catch (error) {
-        // 此时timeValue已提前声明，不会出现未定义错误
         errors.push({
           index: i,
           error: error.message,
           originalTimeValue: timeValue !== undefined ? String(timeValue) : '未获取到时间值',
-          recordType: typeof record,
-          isRecordValid: typeof record === 'object' && record !== null
+          recordType: typeof record
         });
         console.error(`处理第 ${i+1} 条记录失败:`, error);
       }
@@ -179,4 +175,3 @@ export default async function handler(req, res) {
   }
 }
     
-
