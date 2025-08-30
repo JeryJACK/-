@@ -37,7 +37,7 @@ module.exports = async function handler(req, res) {
     // 生成JWT令牌
     const token = jwt.sign(
       { userId: user.id, username: user.username },
-      process.env.JWT_SECRET || 'your-secret-key', // 在Vercel环境变量中设置
+      process.env.JWT_SECRET || 'your-random-secret-key-123', // 在Vercel环境变量中设置
       { expiresIn: '24h' }
     );
 
@@ -48,3 +48,4 @@ module.exports = async function handler(req, res) {
   }
 };
     
+
