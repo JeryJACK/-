@@ -9,8 +9,8 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 解析为北京时间
-function parseBeijingTime(dateValue) {
+// 解析为北京时间并转换为UTC存储（解决时区问题的核心）
+function parseBeijingTimeToUTC(dateValue) {
   if (!dateValue) return null;
   
   // 处理Excel数字日期格式
@@ -27,6 +27,7 @@ function parseBeijingTime(dateValue) {
   
   // 处理字符串格式的日期
   if (typeof dateValue === 'string') {
+    // 尝试直接解析为日期（默认按本地时间）
     const date = new Date(dateValue);
     if (!isNaN(date.getTime())) {
       return date;
@@ -61,6 +62,7 @@ function parseBeijingTime(dateValue) {
         
         if (year < 100) year += 2000;
         
+        // 创建北京时间日期对象
         const date = new Date(year, month, day, hours, minutes, seconds);
         if (!isNaN(date.getTime())) {
           return date;
@@ -73,18 +75,12 @@ function parseBeijingTime(dateValue) {
   return null;
 }
 
-// 格式化北京时间为数据库存储格式
-function formatBeijingTimeForDB(date) {
+// 格式化日期为带时区的UTC时间字符串（PostgreSQL会自动转换为TIMESTAMPTZ）
+function formatTimeForDB(date) {
   if (!date) return null;
   
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
-  
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  // 转换为ISO格式的UTC时间（包含时区信息）
+  return date.toISOString();
 }
 
 export default async function handler(req, res) {
@@ -121,15 +117,15 @@ export default async function handler(req, res) {
         // 获取时间值
         timeValue = record['开始时间'] || record.start_time || record['StartTime'];
         
-        const beijingTime = parseBeijingTime(timeValue);
+        const beijingTime = parseBeijingTimeToUTC(timeValue);
         
         if (!beijingTime) {
           throw new Error(`无法解析时间格式: ${timeValue || '未提供时间'}`);
         }
         
-        const dbTime = formatBeijingTimeForDB(beijingTime);
+        // 格式化为带时区的UTC时间字符串
+        const dbTime = formatTimeForDB(beijingTime);
         
-        // 完全移除start_time_raw字段的引用
         await pool.query(
           `INSERT INTO raw_records 
            (plan_id, start_time, customer, satellite, station, 
@@ -137,13 +133,13 @@ export default async function handler(req, res) {
            VALUES ($1, $2::TIMESTAMPTZ, $3, $4, $5, $6, $7, $8)`,
           [
             record['计划ID'] || record.plan_id || null,
-            dbTime,  // 存储为北京时间
+            dbTime,  // 存储为带时区的时间戳
             record['客户'] || record.customer || null,
             record['卫星'] || record.satellite || null,
             record['测站'] || record.station || null,
             record['任务结果'] || record.task_result || null,
             record['任务类型'] || record.task_type || null,
-            JSON.stringify(record)  // 存储原始数据
+            JSON.stringify(record)
           ]
         );
         
