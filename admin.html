@@ -28,7 +28,7 @@
             <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary cursor-pointer transition-colors" id="dropArea">
                 <i class="fa fa-file-excel-o text-4xl text-gray-400 mb-3"></i>
                 <p class="mb-2">拖放Excel文件到此处，或<span class="text-primary font-medium">点击上传</span></p>
-                <p class="text-sm text-gray-500">支持 .xlsx 格式文件，时间将按本地时间解析</p>
+                <p class="text-sm text-gray-500">支持 .xlsx 格式文件，时间将保持原始格式存储</p>
                 <input type="file" id="fileInput" accept=".xlsx" class="hidden">
             </div>
             <div id="importStatus" class="mt-4 hidden"></div>
@@ -48,7 +48,7 @@
                     <thead>
                         <tr>
                             <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">计划ID</th>
-                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">开始时间（本地）</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">开始时间（原始格式）</th>
                             <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">客户</th>
                             <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">卫星</th>
                             <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任务结果</th>
@@ -86,8 +86,9 @@
                         <input type="text" id="editPlanId" class="w-full p-2 border border-gray-300 rounded-md">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">开始时间（本地）</label>
-                        <input type="datetime-local" id="editStartTime" class="w-full p-2 border border-gray-300 rounded-md">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">开始时间（原始格式）</label>
+                        <input type="text" id="editStartTime" class="w-full p-2 border border-gray-300 rounded-md" 
+                               placeholder="保持原始时间格式，不做转换">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">客户</label>
@@ -242,20 +243,17 @@
             }
         }
 
-        // 渲染表格 - 确保时间以本地时间显示
+        // 渲染表格 - 直接显示原始时间，不做任何转换
         function renderTable(records) {
             if (records.length === 0) {
                 dataTableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">没有数据</td></tr>';
                 return;
             }
             
-            dataTableBody.innerHTML = records.map(record => {
-                // 转换为本地时间显示
-                const localTime = record.start_time ? new Date(record.start_time).toLocaleString() : '-';
-                return `
+            dataTableBody.innerHTML = records.map(record => `
                 <tr>
                     <td class="px-6 py-4 whitespace-nowrap">${record.plan_id || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${localTime}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${record.start_time || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.customer || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.satellite || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.task_result || '-'}</td>
@@ -268,8 +266,7 @@
                         </button>
                     </td>
                 </tr>
-                `;
-            }).join('');
+            `).join('');
         }
 
         // 处理文件上传
@@ -358,20 +355,10 @@
                     return;
                 }
                 
-                // 填充表单，将数据库时间转换为本地时间格式
+                // 填充表单，直接使用原始时间值
                 document.getElementById('editId').value = data.id;
                 document.getElementById('editPlanId').value = data.plan_id || '';
-                
-                // 转换为本地时间的datetime-local格式
-                if (data.start_time) {
-                    const localDate = new Date(data.start_time);
-                    // 转换为YYYY-MM-DDThh:mm格式
-                    const dateTimeLocal = localDate.toISOString().slice(0, 16);
-                    document.getElementById('editStartTime').value = dateTimeLocal;
-                } else {
-                    document.getElementById('editStartTime').value = '';
-                }
-                
+                document.getElementById('editStartTime').value = data.start_time || ''; // 直接使用原始时间
                 document.getElementById('editCustomer').value = data.customer || '';
                 document.getElementById('editSatellite').value = data.satellite || '';
                 document.getElementById('editStation').value = data.station || '';
@@ -389,7 +376,7 @@
             const id = document.getElementById('editId').value;
             const data = {
                 plan_id: document.getElementById('editPlanId').value,
-                start_time: document.getElementById('editStartTime').value,
+                start_time: document.getElementById('editStartTime').value, // 直接保存原始时间
                 customer: document.getElementById('editCustomer').value,
                 satellite: document.getElementById('editSatellite').value,
                 station: document.getElementById('editStation').value,
