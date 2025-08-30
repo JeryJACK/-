@@ -9,15 +9,8 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 转换UTC时间到本地时区（根据你的情况，这里假设是UTC+8）
-function convertToLocalTime(utcDate) {
-  // 计算UTC+8偏移（8小时的毫秒数）
-  const offsetMs = 8 * 60 * 60 * 1000;
-  return new Date(utcDate.getTime() + offsetMs);
-}
-
-// 精确解析Excel数值日期时间
-function parseExcelDateTime(excelValue, targetTimezone = 'UTC+8') {
+// 精确解析Excel数值日期时间（无时区转换）
+function parseExcelDateTime(excelValue) {
   // 分离整数部分（日期）和小数部分（时间）
   const days = Math.floor(excelValue);
   const timeFraction = excelValue - days;
@@ -28,12 +21,12 @@ function parseExcelDateTime(excelValue, targetTimezone = 'UTC+8') {
   // 修正Excel 1900年闰年错误
   const adjustedDays = days - 2;
   
-  // 计算基准日期（UTC时间）
+  // 计算基准日期
   const baseDate = new Date(excelStartDate);
   baseDate.setDate(excelStartDate.getDate() + adjustedDays);
   baseDate.setHours(0, 0, 0, 0);
   
-  // 精确计算UTC时间部分
+  // 精确计算时间部分（完全基于Excel数值，不做时区调整）
   const totalSeconds = timeFraction * 86400; // 86400秒 = 1天
   const hours = Math.floor(totalSeconds / 3600);
   const remainingSeconds = totalSeconds % 3600;
@@ -41,73 +34,66 @@ function parseExcelDateTime(excelValue, targetTimezone = 'UTC+8') {
   const seconds = Math.floor(remainingSeconds % 60);
   const milliseconds = Math.round((remainingSeconds % 60 - seconds) * 1000);
   
-  // 构建UTC日期时间
-  const utcDate = new Date(baseDate);
-  utcDate.setHours(hours, minutes, seconds, milliseconds);
+  // 构建最终日期时间（完全基于Excel数值）
+  const resultDate = new Date(baseDate);
+  resultDate.setHours(hours, minutes, seconds, milliseconds);
   
-  // 转换到目标时区（默认UTC+8）
-  let localDate;
-  if (targetTimezone === 'UTC+8') {
-    localDate = convertToLocalTime(utcDate);
-  } else {
-    localDate = utcDate; // 其他时区可在此扩展
-  }
-  
-  // 详细日志用于调试
-  console.log(`时间解析详情:
-    原始Excel值: ${excelValue}
+  // 详细日志
+  console.log(`Excel时间解析:
+    原始值: ${excelValue}
     日期部分: ${days}天 -> ${baseDate.toISOString().split('T')[0]}
-    时间比例: ${timeFraction} -> UTC ${hours}:${minutes}:${seconds}
-    UTC时间: ${utcDate.toISOString()}
-    本地时间(${targetTimezone}): ${localDate.toISOString()}
-    本地时间(格式化): ${localDate.getFullYear()}-${(localDate.getMonth()+1).toString().padStart(2,'0')}-${localDate.getDate().toString().padStart(2,'0')} ${localDate.getHours().toString().padStart(2,'0')}:${localDate.getMinutes().toString().padStart(2,'0')}:${localDate.getSeconds().toString().padStart(2,'0')}`);
+    时间部分: ${timeFraction} -> ${hours}:${minutes}:${seconds}.${milliseconds}
+    解析结果: ${resultDate.toISOString()}`);
   
-  return localDate.toISOString();
+  return resultDate.toISOString();
 }
 
-// 验证时间是否匹配预期
-function validateTime(parsedTime, expectedTime) {
-  if (!expectedTime) return true;
-  
-  const parsed = new Date(parsedTime);
-  const expected = new Date(expectedTime);
-  
-  // 允许1分钟内的误差（考虑Excel精度问题）
-  const timeDiff = Math.abs(parsed.getTime() - expected.getTime());
-  return timeDiff < 60000; // 60000毫秒 = 1分钟
-}
-
-// 主解析函数
+// 主解析函数（无时区转换）
 function parseDateTime(dateTimeValue) {
   if (!dateTimeValue) return null;
   
   // 1. 处理Excel数值
   if (typeof dateTimeValue === 'number') {
-    if (dateTimeValue > 25569) {
-      // 解析为UTC+8时间（根据你的时区调整）
-      return parseExcelDateTime(dateTimeValue, 'UTC+8');
+    if (dateTimeValue > 25569) { // 1970年之后的日期
+      return parseExcelDateTime(dateTimeValue);
     }
   }
   
-  // 2. 处理标准字符串格式
+  // 2. 处理标准字符串格式（完全按字符串原始值解析）
   if (typeof dateTimeValue === 'string') {
+    // 支持 "YYYY-MM-DD HH:mm:ss" 格式
     const standardPattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
     const match = dateTimeValue.match(standardPattern);
     
     if (match) {
       const [, year, month, day, hours, minutes, seconds] = match;
-      // 直接按本地时间（UTC+8）解析
+      // 直接按字符串中的数值构建日期，不做时区调整
       const date = new Date(
-        `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+08:00`
+        parseInt(year, 10),
+        parseInt(month, 10) - 1, // 月份修正（0开始）
+        parseInt(day, 10),
+        parseInt(hours, 10),
+        parseInt(minutes, 10),
+        parseInt(seconds, 10)
       );
       
       if (!isNaN(date.getTime())) {
+        console.log(`字符串时间解析: ${dateTimeValue} -> ${date.toISOString()}`);
         return date.toISOString();
       }
     }
   }
   
-  console.warn(`无法解析的日期时间: ${dateTimeValue}`);
+  // 3. 尝试直接解析其他字符串格式
+  if (typeof dateTimeValue === 'string') {
+    const date = new Date(dateTimeValue);
+    if (!isNaN(date.getTime())) {
+      console.log(`直接解析: ${dateTimeValue} -> ${date.toISOString()}`);
+      return date.toISOString();
+    }
+  }
+  
+  console.warn(`无法解析的时间格式: ${dateTimeValue} (类型: ${typeof dateTimeValue})`);
   return null;
 }
 
@@ -142,16 +128,6 @@ export default async function handler(req, res) {
         
         if (!startTime) {
           throw new Error(`无法解析时间格式: ${timeValue}`);
-        }
-        
-        // 对于第一条记录进行特殊验证（你的示例）
-        if (i === 0) {
-          const isValid = validateTime(startTime, '2025-01-01T00:01:07+08:00');
-          if (!isValid) {
-            console.warn(`第一条记录时间不匹配:
-              解析结果: ${startTime}
-              预期时间: 2025-01-01 00:01:07`);
-          }
         }
         
         await pool.query(
