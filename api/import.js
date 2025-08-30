@@ -9,67 +9,92 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 修复的日期解析函数，支持Excel日期格式
-function parseDate(dateValue) {
-  if (!dateValue) return null;
+// 增强的日期时间解析函数，重点优化时间部分
+function parseDateTime(dateTimeValue) {
+  if (!dateTimeValue) return null;
   
-  // 情况1: 如果是数字，可能是Excel日期格式（从1900年1月1日开始的天数）
-  if (typeof dateValue === 'number') {
-    // Excel从1900年1月1日开始计算，而JavaScript从1970年开始
-    // 注意：Excel有一个已知的bug，认为1900年是闰年
+  // 情况1: 如果是数字，可能是Excel日期时间格式
+  if (typeof dateTimeValue === 'number') {
     const excelEpoch = new Date(1900, 0, 1);
-    // 减去2天：1天是因为Excel错误地包含1900年2月29日，另1天是因为索引差异
-    const daysToAdd = dateValue - 2;
+    const daysToAdd = dateTimeValue - 2;
     const date = new Date(excelEpoch);
     date.setDate(excelEpoch.getDate() + daysToAdd);
     
-    // 检查日期是否合理（1970年之后）
     if (date.getTime() > 0) {
       return date.toISOString();
     }
   }
   
-  // 情况2: 处理字符串格式的日期
-  if (typeof dateValue === 'string') {
-    // 尝试直接解析
-    const date = new Date(dateValue);
+  // 情况2: 处理字符串格式的日期时间
+  if (typeof dateTimeValue === 'string') {
+    // 清除可能的空格和特殊字符
+    const cleaned = dateTimeValue.trim().replace(/[^\d\-\/:年月日时分秒 ]/g, '');
+    
+    // 专门处理时间部分的正则表达式
+    const timePatterns = [
+      // 小时:分钟:秒 格式 (24小时制)
+      /(\d{1,2}):(\d{2}):(\d{2})/,
+      // 小时:分钟 格式 (24小时制)
+      /(\d{1,2}):(\d{2})/,
+      // 小时.分钟.秒 格式
+      /(\d{1,2})\.(\d{2})\.(\d{2})/,
+      // 小时.分钟 格式
+      /(\d{1,2})\.(\d{2})/,
+      // 小时点分钟 格式 (中文常用)
+      /(\d{1,2})点(\d{2})分(\d{2})秒/,
+      // 小时点分钟 格式
+      /(\d{1,2})点(\d{2})分/,
+      // 小时点 格式
+      /(\d{1,2})点/
+    ];
+    
+    // 尝试直接解析完整的日期时间字符串
+    const date = new Date(cleaned);
     if (!isNaN(date.getTime())) {
       return date.toISOString();
     }
     
-    // 尝试常见的中文日期格式
-    const chineseFormats = [
-      /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$/,
-      /^(\d{4})年(\d{1,2})月(\d{1,2})日$/,
-      /^(\d{2})\/(\d{2})\/(\d{4})\s*(\d{1,2}):(\d{1,2})$/,
-      /^(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{1,2})$/,
+    // 尝试解析中文日期时间格式
+    const chinesePatterns = [
+      /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{1,2}):(\d{2})$/,
+      /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})$/,
+      /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})点(\d{2})分(\d{2})秒$/,
+      /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})点(\d{2})分$/,
+      /^(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{2}):(\d{2})$/,
+      /^(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{2})$/,
+      /^(\d{2})\/(\d{2})\/(\d{4})\s*(\d{1,2}):(\d{2}):(\d{2})$/,
+      /^(\d{2})\/(\d{2})\/(\d{4})\s*(\d{1,2}):(\d{2})$/,
     ];
     
-    for (const format of chineseFormats) {
-      const match = dateValue.match(format);
+    for (const pattern of chinesePatterns) {
+      const match = cleaned.match(pattern);
       if (match) {
         let year, month, day, hours = 0, minutes = 0, seconds = 0;
         
         // 根据不同的匹配结果解析
         if (match.length === 7) {
           [, year, month, day, hours, minutes, seconds] = match;
-        } else if (match.length === 4) {
-          [, year, month, day] = match;
         } else if (match.length === 6) {
-          [, month, day, year, hours, minutes] = match;
-        } else if (match.length === 5) {
           [, year, month, day, hours, minutes] = match;
         }
         
-        // 处理月份和日期可能的单数字情况
-        month = parseInt(month, 10) - 1; // JavaScript月份从0开始
+        // 处理月份（JavaScript月份从0开始）
+        month = parseInt(month, 10) - 1;
         day = parseInt(day, 10);
         year = parseInt(year, 10);
+        hours = parseInt(hours, 10);
+        minutes = parseInt(minutes, 10);
+        seconds = parseInt(seconds || 0, 10);
         
-        // 处理可能的两位数年份（如25代表2025）
+        // 处理可能的两位数年份
         if (year < 100) {
           year += 2000;
         }
+        
+        // 处理12小时制可能的问题
+        if (hours > 23) hours = 23;
+        if (minutes > 59) minutes = 59;
+        if (seconds > 59) seconds = 59;
         
         const date = new Date(year, month, day, hours, minutes, seconds);
         if (!isNaN(date.getTime())) {
@@ -77,10 +102,42 @@ function parseDate(dateValue) {
         }
       }
     }
+    
+    // 如果只包含时间，默认使用今天的日期
+    for (const pattern of timePatterns) {
+      const match = cleaned.match(pattern);
+      if (match) {
+        let hours = 0, minutes = 0, seconds = 0;
+        
+        if (match.length === 4) {
+          [, hours, minutes, seconds] = match;
+        } else if (match.length === 3) {
+          [, hours, minutes] = match;
+        } else if (match.length === 2) {
+          [, hours] = match;
+        }
+        
+        hours = parseInt(hours, 10);
+        minutes = parseInt(minutes || 0, 10);
+        seconds = parseInt(seconds || 0, 10);
+        
+        // 处理12小时制可能的问题
+        if (hours > 23) hours = 23;
+        if (minutes > 59) minutes = 59;
+        if (seconds > 59) seconds = 59;
+        
+        // 使用今天的日期加上解析的时间
+        const date = new Date();
+        date.setHours(hours, minutes, seconds, 0);
+        return date.toISOString();
+      }
+    }
   }
   
-  console.warn(`无法解析日期格式: ${dateValue} (类型: ${typeof dateValue})`);
-  return null;
+  console.warn(`无法完全解析日期时间: ${dateTimeValue} (类型: ${typeof dateTimeValue})`);
+  // 即使时间解析失败，也尝试返回日期部分
+  const dateOnly = new Date(dateTimeValue);
+  return !isNaN(dateOnly.getTime()) ? dateOnly.toISOString() : null;
 }
 
 export default async function handler(req, res) {
@@ -109,9 +166,16 @@ export default async function handler(req, res) {
       const record = records[i];
       
       try {
-        // 尝试多种可能的字段名（中文和英文）
-        const startTimeValue = record['开始时间'] || record.start_time || record['StartTime'];
-        const startTime = parseDate(startTimeValue);
+        const timeValue = record['开始时间'] || record.start_time || record['StartTime'];
+        const startTime = parseDateTime(timeValue);
+        
+        // 记录解析结果用于调试
+        if (startTime) {
+          const parsedDate = new Date(startTime);
+          console.log(`解析成功: ${timeValue} -> ${parsedDate.toLocaleString()}`);
+        } else {
+          console.log(`解析失败: ${timeValue}`);
+        }
         
         await pool.query(
           `INSERT INTO raw_records 
@@ -134,8 +198,8 @@ export default async function handler(req, res) {
         errors.push({
           index: i,
           error: error.message,
-          record: record,
-          startTimeValue: record['开始时间'] || record.start_time
+          originalValue: record['开始时间'] || record.start_time,
+          record: record
         });
         console.error(`处理第 ${i+1} 条记录失败:`, error);
       }
