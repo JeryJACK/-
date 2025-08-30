@@ -9,8 +9,15 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 精确解析Excel数值中的时间部分
-function parseExcelDateTime(excelValue) {
+// 转换UTC时间到本地时区（根据你的情况，这里假设是UTC+8）
+function convertToLocalTime(utcDate) {
+  // 计算UTC+8偏移（8小时的毫秒数）
+  const offsetMs = 8 * 60 * 60 * 1000;
+  return new Date(utcDate.getTime() + offsetMs);
+}
+
+// 精确解析Excel数值日期时间
+function parseExcelDateTime(excelValue, targetTimezone = 'UTC+8') {
   // 分离整数部分（日期）和小数部分（时间）
   const days = Math.floor(excelValue);
   const timeFraction = excelValue - days;
@@ -21,59 +28,77 @@ function parseExcelDateTime(excelValue) {
   // 修正Excel 1900年闰年错误
   const adjustedDays = days - 2;
   
-  // 计算基准日期（只包含日期部分）
+  // 计算基准日期（UTC时间）
   const baseDate = new Date(excelStartDate);
   baseDate.setDate(excelStartDate.getDate() + adjustedDays);
-  baseDate.setHours(0, 0, 0, 0); // 清零时间部分
+  baseDate.setHours(0, 0, 0, 0);
   
-  // 精确计算时间部分（小时、分钟、秒、毫秒）
-  const totalSeconds = timeFraction * 86400; // 一天有86400秒
+  // 精确计算UTC时间部分
+  const totalSeconds = timeFraction * 86400; // 86400秒 = 1天
   const hours = Math.floor(totalSeconds / 3600);
   const remainingSeconds = totalSeconds % 3600;
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = Math.floor(remainingSeconds % 60);
   const milliseconds = Math.round((remainingSeconds % 60 - seconds) * 1000);
   
-  // 构建完整日期时间
-  const resultDate = new Date(baseDate);
-  resultDate.setHours(hours, minutes, seconds, milliseconds);
+  // 构建UTC日期时间
+  const utcDate = new Date(baseDate);
+  utcDate.setHours(hours, minutes, seconds, milliseconds);
   
-  // 详细日志，方便调试
-  console.log(`Excel时间解析详情: 
-    原始值: ${excelValue}
+  // 转换到目标时区（默认UTC+8）
+  let localDate;
+  if (targetTimezone === 'UTC+8') {
+    localDate = convertToLocalTime(utcDate);
+  } else {
+    localDate = utcDate; // 其他时区可在此扩展
+  }
+  
+  // 详细日志用于调试
+  console.log(`时间解析详情:
+    原始Excel值: ${excelValue}
     日期部分: ${days}天 -> ${baseDate.toISOString().split('T')[0]}
-    时间比例: ${timeFraction} -> ${hours}:${minutes}:${seconds}.${milliseconds}
-    解析结果: ${resultDate.toISOString()}`);
+    时间比例: ${timeFraction} -> UTC ${hours}:${minutes}:${seconds}
+    UTC时间: ${utcDate.toISOString()}
+    本地时间(${targetTimezone}): ${localDate.toISOString()}
+    本地时间(格式化): ${localDate.getFullYear()}-${(localDate.getMonth()+1).toString().padStart(2,'0')}-${localDate.getDate().toString().padStart(2,'0')} ${localDate.getHours().toString().padStart(2,'0')}:${localDate.getMinutes().toString().padStart(2,'0')}:${localDate.getSeconds().toString().padStart(2,'0')}`);
   
-  return resultDate;
+  return localDate.toISOString();
 }
 
-// 主日期时间解析函数
+// 验证时间是否匹配预期
+function validateTime(parsedTime, expectedTime) {
+  if (!expectedTime) return true;
+  
+  const parsed = new Date(parsedTime);
+  const expected = new Date(expectedTime);
+  
+  // 允许1分钟内的误差（考虑Excel精度问题）
+  const timeDiff = Math.abs(parsed.getTime() - expected.getTime());
+  return timeDiff < 60000; // 60000毫秒 = 1分钟
+}
+
+// 主解析函数
 function parseDateTime(dateTimeValue) {
   if (!dateTimeValue) return null;
   
-  // 1. 处理Excel数值日期时间
+  // 1. 处理Excel数值
   if (typeof dateTimeValue === 'number') {
-    if (dateTimeValue > 25569) { // 确保是1970年之后的日期
-      const date = parseExcelDateTime(dateTimeValue);
-      return date.toISOString();
+    if (dateTimeValue > 25569) {
+      // 解析为UTC+8时间（根据你的时区调整）
+      return parseExcelDateTime(dateTimeValue, 'UTC+8');
     }
   }
   
   // 2. 处理标准字符串格式
   if (typeof dateTimeValue === 'string') {
     const standardPattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
-    const standardMatch = dateTimeValue.match(standardPattern);
+    const match = dateTimeValue.match(standardPattern);
     
-    if (standardMatch) {
-      const [, year, month, day, hours, minutes, seconds] = standardMatch;
+    if (match) {
+      const [, year, month, day, hours, minutes, seconds] = match;
+      // 直接按本地时间（UTC+8）解析
       const date = new Date(
-        parseInt(year, 10),
-        parseInt(month, 10) - 1,
-        parseInt(day, 10),
-        parseInt(hours, 10),
-        parseInt(minutes, 10),
-        parseInt(seconds, 10)
+        `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+08:00`
       );
       
       if (!isNaN(date.getTime())) {
@@ -82,22 +107,11 @@ function parseDateTime(dateTimeValue) {
     }
   }
   
-  // 3. 处理其他字符串格式
-  if (typeof dateTimeValue === 'string') {
-    const cleaned = dateTimeValue.trim();
-    const date = new Date(cleaned);
-    
-    if (!isNaN(date.getTime())) {
-      return date.toISOString();
-    }
-  }
-  
-  console.warn(`无法解析的日期时间: ${dateTimeValue} (类型: ${typeof dateTimeValue})`);
+  console.warn(`无法解析的日期时间: ${dateTimeValue}`);
   return null;
 }
 
 export default async function handler(req, res) {
-  // 保持与之前相同的API处理逻辑...
   if (req.method !== 'POST') {
     return res.status(405).json({ error: '方法不允许，仅支持POST' });
   }
@@ -123,11 +137,21 @@ export default async function handler(req, res) {
       const record = records[i];
       
       try {
-        const timeValue = record['开始时间'] || record.start_time || record['StartTime'];
+        const timeValue = record['开始时间'] || record.start_time;
         const startTime = parseDateTime(timeValue);
         
         if (!startTime) {
           throw new Error(`无法解析时间格式: ${timeValue}`);
+        }
+        
+        // 对于第一条记录进行特殊验证（你的示例）
+        if (i === 0) {
+          const isValid = validateTime(startTime, '2025-01-01T00:01:07+08:00');
+          if (!isValid) {
+            console.warn(`第一条记录时间不匹配:
+              解析结果: ${startTime}
+              预期时间: 2025-01-01 00:01:07`);
+          }
         }
         
         await pool.query(
@@ -137,12 +161,12 @@ export default async function handler(req, res) {
           [
             record['计划ID'] || record.plan_id || null,
             startTime,
-            record['客户'] || record.customer || null,
-            record['卫星'] || record.satellite || null,
-            record['测站'] || record.station || null,
-            record['任务结果'] || record.task_result || null,
-            record['任务类型'] || record.task_type || null,
-            record ? JSON.stringify(record) : null
+            record['客户'] || null,
+            record['卫星'] || null,
+            record['测站'] || null,
+            record['任务结果'] || null,
+            record['任务类型'] || null,
+            JSON.stringify(record)
           ]
         );
         
@@ -165,7 +189,7 @@ export default async function handler(req, res) {
       inserted: inserted,
       total: records.length,
       errors: errors,
-      message: `成功导入 ${inserted} 条记录，共 ${records.length} 条`
+      message: `成功导入 ${inserted} 条记录`
     });
   } catch (error) {
     await pool.query('ROLLBACK');
