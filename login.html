@@ -65,19 +65,12 @@
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             const errorMsg = document.getElementById('errorMessage');
-            const submitBtn = e.submitter;
-            
-            // 显示加载状态
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i> 登录中...';
-            errorMsg.classList.add('hidden');
             
             try {
                 const response = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password }),
-                    timeout: 10000
+                    body: JSON.stringify({ username, password })
                 });
                 
                 const data = await response.json();
@@ -87,20 +80,14 @@
                     localStorage.setItem('token', data.token);
                     window.location.href = '/admin.html';
                 } else {
-                    errorMsg.querySelector('span').textContent = data.error || '登录失败，请检查用户名和密码';
+                    errorMsg.querySelector('span').textContent = data.error || '登录失败';
                     errorMsg.classList.remove('hidden');
                 }
             } catch (error) {
-                console.error('登录请求错误:', error);
-                errorMsg.querySelector('span').textContent = '网络错误，无法连接到服务器';
+                errorMsg.querySelector('span').textContent = '网络错误，请重试';
                 errorMsg.classList.remove('hidden');
-            } finally {
-                // 恢复按钮状态
-                submitBtn.disabled = false;
-                submitBtn.textContent = '登录';
             }
         });
     </script>
 </body>
 </html>
-    
