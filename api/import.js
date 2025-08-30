@@ -9,92 +9,76 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 优化的日期时间解析函数，优先处理标准格式
+// 精确的Excel日期时间解析函数
+function parseExcelDateTime(excelValue) {
+  // Excel的起始日期（1900年1月1日）
+  const excelStartDate = new Date(1900, 0, 1);
+  // Excel错误地认为1900年是闰年，所以需要减去2天的修正
+  const daysToAdd = excelValue - 2;
+  
+  // 计算总毫秒数（一天 = 86400000毫秒）
+  const totalMilliseconds = daysToAdd * 86400000;
+  
+  // 计算最终日期
+  const resultDate = new Date(excelStartDate.getTime() + totalMilliseconds);
+  
+  // 验证日期是否合理（2000-2100年之间）
+  if (resultDate.getFullYear() < 2000 || resultDate.getFullYear() > 2100) {
+    console.warn(`解析结果超出合理范围: ${excelValue} -> ${resultDate.toISOString()}`);
+  }
+  
+  return resultDate;
+}
+
+// 主日期时间解析函数
 function parseDateTime(dateTimeValue) {
   if (!dateTimeValue) return null;
   
-  // 1. 首先处理标准的"YYYY-MM-DD HH:mm:ss"格式（你的情况）
-  const standardPattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
+  // 1. 优先处理Excel数值日期（你的问题场景）
+  if (typeof dateTimeValue === 'number') {
+    // 检查是否是合理的Excel日期数值（1970年之后）
+    if (dateTimeValue > 25569) { // 25569是1970-01-01的Excel数值
+      const date = parseExcelDateTime(dateTimeValue);
+      console.log(`Excel数值解析: ${dateTimeValue} -> ${date.toISOString()}`);
+      return date.toISOString();
+    }
+  }
+  
+  // 2. 处理标准字符串格式 "YYYY-MM-DD HH:mm:ss"
   if (typeof dateTimeValue === 'string') {
+    const standardPattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
     const standardMatch = dateTimeValue.match(standardPattern);
+    
     if (standardMatch) {
       const [, year, month, day, hours, minutes, seconds] = standardMatch;
-      // 月份减1因为JavaScript月份从0开始
       const date = new Date(
         parseInt(year, 10),
-        parseInt(month, 10) - 1,
+        parseInt(month, 10) - 1, // 月份修正
         parseInt(day, 10),
         parseInt(hours, 10),
         parseInt(minutes, 10),
         parseInt(seconds, 10)
       );
+      
       if (!isNaN(date.getTime())) {
-        console.log(`标准格式解析成功: ${dateTimeValue} -> ${date.toISOString()}`);
+        console.log(`标准格式解析: ${dateTimeValue} -> ${date.toISOString()}`);
         return date.toISOString();
       }
     }
   }
   
-  // 2. 处理Excel数字日期时间格式
-  if (typeof dateTimeValue === 'number') {
-    const excelEpoch = new Date(1900, 0, 1);
-    const daysToAdd = dateTimeValue - 2;
-    const date = new Date(excelEpoch);
-    date.setDate(excelEpoch.getDate() + daysToAdd);
-    
-    if (date.getTime() > 0) {
-      return date.toISOString();
-    }
-  }
-  
-  // 3. 处理其他常见的日期时间格式
+  // 3. 处理其他常见格式
   if (typeof dateTimeValue === 'string') {
-    // 清理字符串
     const cleaned = dateTimeValue.trim();
-    
-    // 尝试直接解析
     const date = new Date(cleaned);
+    
     if (!isNaN(date.getTime())) {
+      console.log(`通用格式解析: ${cleaned} -> ${date.toISOString()}`);
       return date.toISOString();
-    }
-    
-    // 处理其他可能的格式
-    const otherPatterns = [
-      /^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{2})$/, // YYYY-MM-DD HH:mm
-      /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})$/, // MM/DD/YYYY HH:mm:ss
-      /^(\d{4})年(\d{1,2})月(\d{1,2})日 (\d{1,2}):(\d{2}):(\d{2})$/, // 中文日期时间
-    ];
-    
-    for (const pattern of otherPatterns) {
-      const match = cleaned.match(pattern);
-      if (match) {
-        let year, month, day, hours = 0, minutes = 0, seconds = 0;
-        
-        if (match.length === 7) {
-          [, year, month, day, hours, minutes, seconds] = match;
-        } else if (match.length === 6) {
-          [, year, month, day, hours, minutes] = match;
-        }
-        
-        // 处理月份（JavaScript月份从0开始）
-        month = parseInt(month, 10) - 1;
-        const date = new Date(
-          parseInt(year, 10),
-          month,
-          parseInt(day, 10),
-          parseInt(hours, 10),
-          parseInt(minutes, 10),
-          parseInt(seconds || 0, 10)
-        );
-        
-        if (!isNaN(date.getTime())) {
-          return date.toISOString();
-        }
-      }
     }
   }
   
-  console.warn(`无法解析的日期时间格式: ${dateTimeValue} (类型: ${typeof dateTimeValue})`);
+  console.warn(`无法解析的日期时间: ${dateTimeValue} (类型: ${typeof dateTimeValue})`);
   return null;
 }
 
@@ -124,12 +108,17 @@ export default async function handler(req, res) {
       const record = records[i];
       
       try {
-        // 获取时间值（支持多种可能的字段名）
         const timeValue = record['开始时间'] || record.start_time || record['StartTime'];
         const startTime = parseDateTime(timeValue);
         
         if (!startTime) {
           throw new Error(`无法解析时间格式: ${timeValue}`);
+        }
+        
+        // 验证解析后的年份是否合理
+        const parsedYear = new Date(startTime).getFullYear();
+        if (parsedYear < 2000 || parsedYear > 2100) {
+          throw new Error(`解析结果年份不合理: ${parsedYear} (原始值: ${timeValue})`);
         }
         
         await pool.query(
@@ -153,7 +142,7 @@ export default async function handler(req, res) {
         errors.push({
           index: i,
           error: error.message,
-          originalTimeValue: record['开始时间'] || record.start_time,
+          originalValue: timeValue,
           record: record
         });
         console.error(`处理第 ${i+1} 条记录失败:`, error);
