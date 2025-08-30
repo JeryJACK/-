@@ -9,16 +9,30 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 精确解析Excel数值日期时间（无时区转换）
+// 辅助函数：将日期转换为本地时间字符串（不转换为UTC）
+function toLocalISOString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+  
+  // 返回本地时间的ISO格式字符串（不带时区信息，或强制为+08:00）
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}+08:00`;
+}
+
+// 解析Excel数值为本地时间（完全匹配预期）
 function parseExcelDateTime(excelValue) {
-  // 分离整数部分（日期）和小数部分（时间）
+  // 分离日期和时间部分
   const days = Math.floor(excelValue);
   const timeFraction = excelValue - days;
   
   // Excel起始日期（1900年1月1日）
   const excelStartDate = new Date(1900, 0, 1);
   
-  // 修正Excel 1900年闰年错误
+  // 修正Excel闰年错误
   const adjustedDays = days - 2;
   
   // 计算基准日期
@@ -26,74 +40,85 @@ function parseExcelDateTime(excelValue) {
   baseDate.setDate(excelStartDate.getDate() + adjustedDays);
   baseDate.setHours(0, 0, 0, 0);
   
-  // 精确计算时间部分（完全基于Excel数值，不做时区调整）
-  const totalSeconds = timeFraction * 86400; // 86400秒 = 1天
+  // 计算时间部分（按本地时间处理）
+  const totalSeconds = timeFraction * 86400;
   const hours = Math.floor(totalSeconds / 3600);
   const remainingSeconds = totalSeconds % 3600;
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = Math.floor(remainingSeconds % 60);
   const milliseconds = Math.round((remainingSeconds % 60 - seconds) * 1000);
   
-  // 构建最终日期时间（完全基于Excel数值）
+  // 构建最终日期时间（本地时间）
   const resultDate = new Date(baseDate);
   resultDate.setHours(hours, minutes, seconds, milliseconds);
+  
+  // 转换为本地时间字符串（不转为UTC）
+  const localTimeStr = toLocalISOString(resultDate);
   
   // 详细日志
   console.log(`Excel时间解析:
     原始值: ${excelValue}
-    日期部分: ${days}天 -> ${baseDate.toISOString().split('T')[0]}
-    时间部分: ${timeFraction} -> ${hours}:${minutes}:${seconds}.${milliseconds}
-    解析结果: ${resultDate.toISOString()}`);
+    计算时间(本地): ${hours}:${minutes}:${seconds}
+    解析结果: ${localTimeStr}`);
   
-  return resultDate.toISOString();
+  return localTimeStr;
 }
 
-// 主解析函数（无时区转换）
+// 解析字符串格式时间（完全按字面意思处理）
+function parseStringDateTime(dateTimeStr) {
+  // 匹配 "YYYY-MM-DD HH:mm:ss" 格式
+  const pattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
+  const match = dateTimeStr.match(pattern);
+  
+  if (match) {
+    const [, year, month, day, hours, minutes, seconds] = match;
+    // 直接按字符串中的数值构建本地时间
+    const date = new Date(
+      parseInt(year, 10),
+      parseInt(month, 10) - 1, // 月份修正
+      parseInt(day, 10),
+      parseInt(hours, 10),
+      parseInt(minutes, 10),
+      parseInt(seconds, 10)
+    );
+    
+    // 转换为本地时间字符串
+    const localTimeStr = toLocalISOString(date);
+    console.log(`字符串时间解析: ${dateTimeStr} -> ${localTimeStr}`);
+    return localTimeStr;
+  }
+  
+  return null;
+}
+
+// 主解析函数
 function parseDateTime(dateTimeValue) {
   if (!dateTimeValue) return null;
   
   // 1. 处理Excel数值
   if (typeof dateTimeValue === 'number') {
-    if (dateTimeValue > 25569) { // 1970年之后的日期
+    if (dateTimeValue > 25569) {
       return parseExcelDateTime(dateTimeValue);
     }
   }
   
-  // 2. 处理标准字符串格式（完全按字符串原始值解析）
+  // 2. 处理字符串格式
   if (typeof dateTimeValue === 'string') {
-    // 支持 "YYYY-MM-DD HH:mm:ss" 格式
-    const standardPattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
-    const match = dateTimeValue.match(standardPattern);
-    
-    if (match) {
-      const [, year, month, day, hours, minutes, seconds] = match;
-      // 直接按字符串中的数值构建日期，不做时区调整
-      const date = new Date(
-        parseInt(year, 10),
-        parseInt(month, 10) - 1, // 月份修正（0开始）
-        parseInt(day, 10),
-        parseInt(hours, 10),
-        parseInt(minutes, 10),
-        parseInt(seconds, 10)
-      );
-      
-      if (!isNaN(date.getTime())) {
-        console.log(`字符串时间解析: ${dateTimeValue} -> ${date.toISOString()}`);
-        return date.toISOString();
-      }
+    const parsed = parseStringDateTime(dateTimeValue);
+    if (parsed) {
+      return parsed;
     }
-  }
-  
-  // 3. 尝试直接解析其他字符串格式
-  if (typeof dateTimeValue === 'string') {
+    
+    // 尝试直接解析其他格式
     const date = new Date(dateTimeValue);
     if (!isNaN(date.getTime())) {
-      console.log(`直接解析: ${dateTimeValue} -> ${date.toISOString()}`);
-      return date.toISOString();
+      const localTimeStr = toLocalISOString(date);
+      console.log(`直接解析: ${dateTimeValue} -> ${localTimeStr}`);
+      return localTimeStr;
     }
   }
   
-  console.warn(`无法解析的时间格式: ${dateTimeValue} (类型: ${typeof dateTimeValue})`);
+  console.warn(`无法解析的时间格式: ${dateTimeValue}`);
   return null;
 }
 
@@ -130,13 +155,25 @@ export default async function handler(req, res) {
           throw new Error(`无法解析时间格式: ${timeValue}`);
         }
         
+        // 验证第一条记录是否匹配预期
+        if (i === 0) {
+          const expected = '2025-01-01T00:01:07.000+08:00';
+          if (startTime !== expected) {
+            console.warn(`第一条记录时间不匹配:
+              解析结果: ${startTime}
+              预期时间: ${expected}`);
+          } else {
+            console.log('第一条记录时间解析正确!');
+          }
+        }
+        
         await pool.query(
           `INSERT INTO raw_records 
            (plan_id, start_time, customer, satellite, station, task_result, task_type, raw)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
             record['计划ID'] || record.plan_id || null,
-            startTime,
+            startTime, // 存储本地时间字符串，不带UTC转换
             record['客户'] || null,
             record['卫星'] || null,
             record['测站'] || null,
