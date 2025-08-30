@@ -9,46 +9,86 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 转换Excel日期数字为JavaScript日期
+/**
+ * 精确转换Excel日期数字为JavaScript日期
+ * Excel日期是自1900年1月1日以来的天数（包含时间小数部分）
+ */
 function excelDateToJSDate(excelDate) {
-  // Excel从1900年1月1日开始计算，但是存在一个历史错误，认为1900年是闰年
-  const baseDate = new Date(1900, 0, 1);
-  // 减去2天：1天是因为Excel的起始日期实际上是1899-12-30，另1天是因为闰年错误
-  const daysToAdd = excelDate - 2;
-  baseDate.setDate(baseDate.getDate() + daysToAdd);
-  return baseDate;
+  // 处理Excel的1900年闰年错误
+  const isLeapYearError = excelDate >= 60;
+  const daysToAdd = isLeapYearError ? excelDate - 2 : excelDate - 1;
+  
+  // 从1900年1月1日开始计算
+  const baseDate = new Date(1899, 11, 30); // 实际上Excel起始日期是1899-12-30
+  
+  // 计算总毫秒数（一天 = 86400000毫秒）
+  const totalMilliseconds = daysToAdd * 86400000;
+  
+  // 创建日期对象
+  const date = new Date(baseDate.getTime() + totalMilliseconds);
+  
+  return date;
 }
 
-// 尝试将值转换为有效的日期
+/**
+ * 尝试多种方式解析日期
+ */
 function parseDate(value) {
-  if (!value) return null;
+  // 记录调试信息，帮助排查问题
+  console.log(`尝试解析日期: ${value} (类型: ${typeof value})`);
   
-  // 如果是数字，尝试作为Excel日期处理
-  if (!isNaN(value)) {
-    const date = excelDateToJSDate(Number(value));
-    // 检查是否是有效的日期（不早于1970年）
-    if (date.getTime() > 0) {
-      return date.toISOString();
-    }
-  }
+  if (!value) return { success: false, error: '空值' };
   
-  // 如果是字符串，尝试直接解析
-  if (typeof value === 'string') {
-    // 尝试几种常见的日期格式
-    const dateFormats = [
-      new Date(value),
-      new Date(value.replace(/-/g, '/')),
-      new Date(value.replace(/\./g, '/'))
-    ];
-    
-    for (const date of dateFormats) {
-      if (!isNaN(date.getTime())) {
-        return date.toISOString();
+  // 处理数字类型的Excel日期
+  if (typeof value === 'number' || !isNaN(Number(value))) {
+    try {
+      const numValue = Number(value);
+      // Excel日期通常在25569（1970-01-01）到很大的数字之间
+      if (numValue > 1 && numValue < 100000) {
+        const date = excelDateToJSDate(numValue);
+        // 验证日期有效性
+        if (date.toString() !== 'Invalid Date') {
+          return {
+            success: true,
+            date: date.toISOString(),
+            method: 'excel数字转换'
+          };
+        }
       }
+    } catch (error) {
+      console.log('Excel日期转换失败:', error.message);
     }
   }
   
-  return null;
+  // 处理字符串类型的日期
+  if (typeof value === 'string') {
+    // 尝试直接解析
+    const date = new Date(value);
+    if (date.toString() !== 'Invalid Date') {
+      return {
+        success: true,
+        date: date.toISOString(),
+        method: '直接字符串解析'
+      };
+    }
+    
+    // 尝试替换分隔符
+    const normalized = value.replace(/-/g, '/').replace(/\./g, '/');
+    const date2 = new Date(normalized);
+    if (date2.toString() !== 'Invalid Date') {
+      return {
+        success: true,
+        date: date2.toISOString(),
+        method: '替换分隔符后解析'
+      };
+    }
+  }
+  
+  // 所有尝试都失败
+  return {
+    success: false,
+    error: `无法解析为有效日期: ${value} (类型: ${typeof value})`
+  };
 }
 
 export default async function handler(req, res) {
@@ -77,17 +117,27 @@ export default async function handler(req, res) {
     
     for (const [index, record] of records.entries()) {
       try {
-        // 处理日期字段，假设Excel中的日期字段可能名为start_time, date, 或时间等
-        const dateFields = ['start_time', 'date', 'time', '开始时间', '日期'];
-        let startTime = null;
-        
         // 尝试找到日期字段并转换
+        const dateFields = ['start_time', 'date', 'time', '开始时间', '日期', 'StartTime'];
+        let startTime = null;
+        let dateFieldUsed = null;
+        
         for (const field of dateFields) {
           if (record[field] !== undefined) {
-            startTime = parseDate(record[field]);
-            if (startTime) break;
+            const parseResult = parseDate(record[field]);
+            if (parseResult.success) {
+              startTime = parseResult.date;
+              dateFieldUsed = field;
+              console.log(`行 ${index + 1}: 成功解析${field}字段，使用${parseResult.method}`);
+              break;
+            } else {
+              console.log(`行 ${index + 1}: ${field}字段解析失败 - ${parseResult.error}`);
+            }
           }
         }
+        
+        // 如果找不到有效日期，仍然尝试插入记录（日期为null）
+        console.log(`行 ${index + 1}: 最终使用的日期值: ${startTime}`);
         
         // 插入记录
         const result = await pool.query(
@@ -96,14 +146,14 @@ export default async function handler(req, res) {
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING id`,
           [
-           record.plan_id || record.计划ID || null,
-          startTime || record.开始时间 || null,
-          record.customer || record.所属客户 || null,
-          record.satellite || record.卫星名称 || null,
-          record.station || record.测站名称 || null,
-          record.task_result || record.任务结果状态 || null,
-          record.task_type || record.任务类型 || null,
-          record // 保存原始数据
+            record.plan_id || record.planId || record['计划ID'] || record['任务ID'] || null,
+            startTime,
+            record.customer || record['所属客户'] || null,
+            record.satellite || record['卫星名称'] || null,
+            record.station || record['测站名称'] || record['站点'] || null,
+            record.task_result || record['任务结果状态'] || null,
+            record.task_type || record['任务类型'] || null,
+            record // 保存原始数据，便于排查问题
           ]
         );
         
@@ -111,10 +161,18 @@ export default async function handler(req, res) {
           inserted++;
         }
       } catch (error) {
+        const errorMsg = error.message.includes('timestamp') 
+          ? `时间戳格式错误: ${error.message}`
+          : error.message;
+          
         errors.push({
           row: index + 1, // 行号从1开始
-          error: error.message,
-          data: record
+          error: errorMsg,
+          data: {
+            // 只保留关键字段，避免数据过大
+            plan_id: record.plan_id || record.planId || record['计划ID'] || null,
+            date_value: record.start_time || record.date || record['开始时间'] || null
+          }
         });
         console.error(`处理第${index + 1}行时出错:`, error);
       }
@@ -139,3 +197,4 @@ export default async function handler(req, res) {
     res.status(500).json({ error: '导入失败: ' + error.message });
   }
 }
+    
