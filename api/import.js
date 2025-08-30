@@ -9,78 +9,129 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 解析为北京时间并转换为UTC存储（解决时区问题的核心）
-function parseBeijingTimeToUTC(dateValue) {
-  if (!dateValue) return null;
+// 调试用：显示时间解析过程
+function logTimeParseStep(step, value) {
+  console.log(`[时间解析] ${step}:`, value);
+}
+
+// 核心修复：正确解析北京时间（确保小时部分正确）
+function parseBeijingTime(dateValue) {
+  if (!dateValue) {
+    logTimeParseStep('空值', dateValue);
+    return null;
+  }
   
-  // 处理Excel数字日期格式
+  // 处理Excel数字日期格式（包含时间）
   if (typeof dateValue === 'number') {
+    logTimeParseStep('Excel数字格式', dateValue);
+    
+    // Excel日期是自1900年1月1日以来的天数（包含时间小数部分）
     const excelEpoch = new Date(1900, 0, 1);
-    const daysToAdd = dateValue - 2;
+    const days = Math.floor(dateValue);
+    const hours = (dateValue - days) * 24; // 提取小时部分
+    const minutes = (hours - Math.floor(hours)) * 60;
+    const seconds = (minutes - Math.floor(minutes)) * 60;
+    
+    logTimeParseStep('提取的时间部分', `天:${days}, 时:${hours}, 分:${minutes}`);
+    
+    // 修正Excel的1900年闰年错误
+    const adjustedDays = days - 2;
     const date = new Date(excelEpoch);
-    date.setDate(excelEpoch.getDate() + daysToAdd);
+    date.setDate(excelEpoch.getDate() + adjustedDays);
+    
+    // 设置时间部分（北京时间）
+    date.setHours(Math.floor(hours));
+    date.setMinutes(Math.floor(minutes));
+    date.setSeconds(Math.floor(seconds));
     
     if (date.getTime() > 0) {
+      logTimeParseStep('解析结果', date.toLocaleString('zh-CN'));
       return date;
     }
   }
   
-  // 处理字符串格式的日期
+  // 处理字符串格式的日期时间
   if (typeof dateValue === 'string') {
-    // 尝试直接解析为日期（默认按本地时间）
+    logTimeParseStep('字符串格式', dateValue);
+    
+    // 尝试直接解析（作为本地时间，即北京时间）
     const date = new Date(dateValue);
     if (!isNaN(date.getTime())) {
+      logTimeParseStep('直接解析结果', date.toLocaleString('zh-CN'));
       return date;
     }
     
-    // 中文日期格式处理
-    const chineseFormats = [
-      /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$/,
-      /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{1,2})$/,
-      /^(\d{4})年(\d{1,2})月(\d{1,2})日$/,
-      /^(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$/,
-      /^(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{1,2})$/,
-      /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
+    // 增强的中文日期时间格式处理（重点确保小时正确）
+    const timeFormats = [
+      // 带秒的完整格式
+      {
+        regex: /^(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})[日]?\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$/,
+        handler: (m) => ({y:m[1], m:m[2], d:m[3], h:m[4], mi:m[5], s:m[6]})
+      },
+      // 不带秒的格式
+      {
+        regex: /^(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})[日]?\s*(\d{1,2}):(\d{1,2})$/,
+        handler: (m) => ({y:m[1], m:m[2], d:m[3], h:m[4], mi:m[5], s:0})
+      },
+      // 仅日期
+      {
+        regex: /^(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})[日]?$/,
+        handler: (m) => ({y:m[1], m:m[2], d:m[3], h:0, mi:0, s:0})
+      },
+      // 月/日/年 格式
+      {
+        regex: /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(\d{1,2}):(\d{1,2})$/,
+        handler: (m) => ({y:m[3], m:m[1], d:m[2], h:m[4], mi:m[5], s:0})
+      }
     ];
     
-    for (const format of chineseFormats) {
-      const match = dateValue.match(format);
+    for (const format of timeFormats) {
+      const match = dateValue.match(format.regex);
       if (match) {
-        let year, month, day, hours = 0, minutes = 0, seconds = 0;
+        const parts = format.handler(match);
         
-        if (match.length === 7) {
-          [, year, month, day, hours, minutes, seconds] = match;
-        } else if (match.length === 6) {
-          [, year, month, day, hours, minutes] = match;
-        } else if (match.length === 4) {
-          [, year, month, day] = match;
-        }
+        // 转换为数字并验证范围
+        const year = parseInt(parts.y, 10);
+        const month = parseInt(parts.m, 10) - 1; // 月份从0开始
+        const day = parseInt(parts.d, 10);
+        const hours = parseInt(parts.h, 10);
+        const minutes = parseInt(parts.mi, 10);
+        const seconds = parseInt(parts.s, 10);
         
-        month = parseInt(month, 10) - 1;
-        day = parseInt(day, 10);
-        year = parseInt(year, 10);
+        // 验证时间范围
+        if (hours < 0 || hours > 23) continue;
+        if (minutes < 0 || minutes > 59) continue;
+        if (seconds < 0 || seconds > 59) continue;
         
-        if (year < 100) year += 2000;
+        logTimeParseStep('解析的时间部分', `时:${hours}, 分:${minutes}, 秒:${seconds}`);
         
-        // 创建北京时间日期对象
         const date = new Date(year, month, day, hours, minutes, seconds);
         if (!isNaN(date.getTime())) {
+          logTimeParseStep('格式解析结果', date.toLocaleString('zh-CN'));
           return date;
         }
       }
     }
   }
   
-  console.warn(`无法解析日期格式: ${dateValue} (类型: ${typeof dateValue})`);
+  console.warn(`无法解析的时间格式: ${dateValue} (类型: ${typeof dateValue})`);
   return null;
 }
 
-// 格式化日期为带时区的UTC时间字符串（PostgreSQL会自动转换为TIMESTAMPTZ）
-function formatTimeForDB(date) {
+// 格式化时间为PostgreSQL兼容的北京时间字符串
+function formatBeijingTimeForDB(date) {
   if (!date) return null;
   
-  // 转换为ISO格式的UTC时间（包含时区信息）
-  return date.toISOString();
+  // 直接使用北京时间的各部分构建字符串（不做时区转换）
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  
+  // 明确指定时区为北京时间
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}+08`;
 }
 
 export default async function handler(req, res) {
@@ -117,14 +168,14 @@ export default async function handler(req, res) {
         // 获取时间值
         timeValue = record['开始时间'] || record.start_time || record['StartTime'];
         
-        const beijingTime = parseBeijingTimeToUTC(timeValue);
+        const beijingTime = parseBeijingTime(timeValue);
         
         if (!beijingTime) {
           throw new Error(`无法解析时间格式: ${timeValue || '未提供时间'}`);
         }
         
-        // 格式化为带时区的UTC时间字符串
-        const dbTime = formatTimeForDB(beijingTime);
+        // 格式化为带北京时间时区的字符串
+        const dbTime = formatBeijingTimeForDB(beijingTime);
         
         await pool.query(
           `INSERT INTO raw_records 
@@ -133,7 +184,7 @@ export default async function handler(req, res) {
            VALUES ($1, $2::TIMESTAMPTZ, $3, $4, $5, $6, $7, $8)`,
           [
             record['计划ID'] || record.plan_id || null,
-            dbTime,  // 存储为带时区的时间戳
+            dbTime,  // 存储为带北京时间时区的时间
             record['客户'] || record.customer || null,
             record['卫星'] || record.satellite || null,
             record['测站'] || record.station || null,
@@ -148,7 +199,8 @@ export default async function handler(req, res) {
         errors.push({
           index: i,
           error: error.message,
-          originalTimeValue: timeValue !== undefined ? String(timeValue) : '未获取到时间值'
+          originalTimeValue: timeValue !== undefined ? String(timeValue) : '未获取到时间值',
+          parsedTime: beijingTime ? beijingTime.toLocaleString('zh-CN') : '解析失败'
         });
         console.error(`处理第 ${i+1} 条记录失败:`, error);
       }
