@@ -3,7 +3,11 @@ import { verifyAuth } from '../lib/auth';
 
 let pool;
 if (!global._pgPool) {
-  pool = new Pool({ connectionString: process.env.POSTGRES_URL });
+  pool = new Pool({ 
+    connectionString: process.env.POSTGRES_URL,
+    // 明确指定客户端时区为UTC，避免服务器时区影响
+    options: { timezone: 'UTC' }
+  });
   global._pgPool = pool;
 } else {
   pool = global._pgPool;
@@ -25,11 +29,14 @@ export default async function handler(req, res) {
       const countResult = await pool.query('SELECT COUNT(*) FROM raw_records');
       const total = parseInt(countResult.rows[0].count, 10);
       
-      // 关键修复：查询时将UTC时间转换为北京时间
+      // 关键修复：明确将存储的时间转换为北京时间返回
+      // 16小时时差通常是因为UTC-8到UTC+8的转换错误，这里直接指定转换
       const result = await pool.query(
         `SELECT id, plan_id, 
-                -- 将存储的UTC时间转换为北京时间显示
+                -- 明确将存储的时间转换为北京时间
                 start_time AT TIME ZONE 'Asia/Shanghai' AS start_time,
+                -- 同时返回原始存储的时间用于调试
+                start_time AS original_utc_time,
                 customer, satellite, station, 
                 task_result, task_type 
          FROM raw_records 
@@ -42,7 +49,9 @@ export default async function handler(req, res) {
         records: result.rows,
         total: total,
         page: parseInt(page, 10),
-        pageSize: parseInt(pageSize, 10)
+        pageSize: parseInt(pageSize, 10),
+        // 增加时区信息用于调试
+        serverTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone
       });
     } else {
       res.status(405).json({ error: '方法不允许' });
