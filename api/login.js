@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
-import { verifyAuth } from '../../lib/auth';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 let pool;
 if (!global._pgPool) {
@@ -10,49 +11,39 @@ if (!global._pgPool) {
 }
 
 export default async function handler(req, res) {
-  // 验证身份
-  const auth = await verifyAuth(req);
-  if (!auth.success) {
-    return res.status(401).json({ error: auth.error });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: '方法不允许' });
   }
 
-  const { id } = req.query;
+  const { username, password } = req.body;
 
   try {
-    if (req.method === 'GET') {
-      // 获取单条记录
-      const result = await pool.query('SELECT * FROM raw_records WHERE id = $1', [id]);
-      
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: '记录不存在' });
-      }
-      
-      res.json(result.rows[0]);
-    } 
-    else if (req.method === 'PUT') {
-      // 更新记录
-      const { plan_id, start_time, customer, satellite, station, task_result } = req.body;
-      
-      const result = await pool.query(
-        `UPDATE raw_records 
-         SET plan_id = $1, start_time = $2, customer = $3, satellite = $4, 
-             station = $5, task_result = $6, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $7 RETURNING *`,
-        [plan_id, start_time, customer, satellite, station, task_result, id]
-      );
-      
-      res.json({ success: true, record: result.rows[0] });
-    } 
-    else if (req.method === 'DELETE') {
-      // 删除记录
-      await pool.query('DELETE FROM raw_records WHERE id = $1', [id]);
-      res.json({ success: true });
-    } 
-    else {
-      res.status(405).json({ error: '方法不允许' });
+    // 查询用户
+    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: '用户名或密码错误' });
     }
+
+    const user = result.rows[0];
+    
+    // 验证密码
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: '用户名或密码错误' });
+    }
+
+    // 生成JWT令牌
+    const token = jwt.sign(
+      { userId: user.id, username: user.username },
+      process.env.JWT_SECRET || 'your-secret-key', // 在Vercel环境变量中设置
+      { expiresIn: '24h' }
+    );
+
+    res.json({ success: true, token });
   } catch (error) {
-    console.error('记录操作错误:', error);
+    console.error('登录错误:', error);
     res.status(500).json({ error: '服务器错误' });
   }
 }
