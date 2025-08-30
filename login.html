@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据管理登录</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+        <div class="text-center mb-6">
+            <i class="fa fa-database text-primary text-4xl mb-2"></i>
+            <h1 class="text-2xl font-bold text-gray-800">数据管理系统</h1>
+        </div>
+        
+        <form id="loginForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                        <i class="fa fa-user"></i>
+                    </span>
+                    <input type="text" id="username" class="w-full pl-10 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary" required>
+                </div>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                        <i class="fa fa-lock"></i>
+                    </span>
+                    <input type="password" id="password" class="w-full pl-10 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary" required>
+                </div>
+            </div>
+            
+            <button type="submit" class="w-full bg-primary text-white py-2 px-4 rounded-md hover:bg-primary/90 transition-colors">
+                登录
+            </button>
+        </form>
+        
+        <div id="errorMessage" class="mt-4 text-red-500 text-sm hidden">
+            <i class="fa fa-exclamation-circle mr-1"></i>
+            <span></span>
+        </div>
+    </div>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorMsg = document.getElementById('errorMessage');
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 登录成功，保存token并重定向到管理页面
+                    localStorage.setItem('token', data.token);
+                    window.location.href = '/admin.html';
+                } else {
+                    errorMsg.querySelector('span').textContent = data.error || '登录失败';
+                    errorMsg.classList.remove('hidden');
+                }
+            } catch (error) {
+                errorMsg.querySelector('span').textContent = '网络错误，请重试';
+                errorMsg.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
