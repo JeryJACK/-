@@ -31,20 +31,20 @@
             </button>
         </div>
 
-        <!-- 数据导入区域 -->
+        <!-- 数据导入 -->
         <section class="mb-8 bg-white rounded-lg p-6 shadow">
             <h2 class="text-lg font-semibold mb-4">数据导入</h2>
             <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary cursor-pointer transition-colors" id="dropArea">
                 <i class="fa fa-file-excel-o text-4xl text-gray-400 mb-3"></i>
                 <p class="mb-2">拖放Excel文件到此处，或<span class="text-primary font-medium">点击上传</span></p>
-                <p class="text-sm text-gray-500">支持 .xlsx 格式文件，时间将按北京时间解析</p>
+                <p class="text-sm text-gray-500">支持 .xlsx 格式文件，时间将按北京时间处理</p>
                 <input type="file" id="fileInput" accept=".xlsx" class="hidden">
             </div>
             <div id="importStatus" class="mt-4 hidden"></div>
             <div id="validationErrors" class="mt-4 hidden bg-yellow-50 p-3 rounded-lg text-yellow-800 text-sm"></div>
         </section>
 
-        <!-- 数据列表区域 -->
+        <!-- 数据列表 -->
         <section class="bg-white rounded-lg p-6 shadow mb-8">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-lg font-semibold">数据列表</h2>
@@ -67,18 +67,19 @@
                     </thead>
                     <tbody id="dataTableBody" class="bg-white divide-y divide-gray-200">
                         <tr>
-                            <td colspan="6" class="px-6 py-10 text-center text-gray-500">加载数据中...</td>
+                            <td colspan="6" class="px-6 py-10 text-center text-gray-500">
+                                <i class="fa fa-circle-o-notch fa-spin mr-2"></i>加载数据中...
+                            </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
             
             <div class="mt-4 flex justify-between items-center">
-                <div class="text-sm text-gray-500">显示 <span id="showingRange">1-10</span> 条，共 <span id="totalCount">0</span> 条</div>
+                <div class="text-sm text-gray-500">显示 1-10 条，共 <span id="totalCount">0</span> 条</div>
                 <div>
                     <button id="prevPage" class="px-3 py-1 text-sm border border-gray-300 rounded-md mr-2 disabled:opacity-50" disabled>上一页</button>
-                    <span id="currentPage">1</span> / <span id="totalPages">0</span>
-                    <button id="nextPage" class="px-3 py-1 text-sm border border-gray-300 rounded-md ml-2 disabled:opacity-50" disabled>下一页</button>
+                    <button id="nextPage" class="px-3 py-1 text-sm border border-gray-300 rounded-md">下一页</button>
                 </div>
             </div>
         </section>
@@ -139,285 +140,217 @@
     </script>
 
     <script>
-        // 全局状态
-        const state = {
-            currentPage: 1,
-            pageSize: 10,
-            totalCount: 0,
-            totalPages: 0,
-            isLoading: false
-        };
+        // 检查登录状态
+        if (!localStorage.getItem('token')) {
+            window.location.href = '/login.html';
+        }
+
+        // 全局变量
+        let currentPage = 1;
+        const pageSize = 10;
 
         // DOM元素
-        const elements = {
-            dropArea: document.getElementById('dropArea'),
-            fileInput: document.getElementById('fileInput'),
-            importStatus: document.getElementById('importStatus'),
-            validationErrors: document.getElementById('validationErrors'),
-            dataTableBody: document.getElementById('dataTableBody'),
-            totalCountEl: document.getElementById('totalCount'),
-            showingRangeEl: document.getElementById('showingRange'),
-            currentPageEl: document.getElementById('currentPage'),
-            totalPagesEl: document.getElementById('totalPages'),
-            prevPageBtn: document.getElementById('prevPage'),
-            nextPageBtn: document.getElementById('nextPage'),
-            refreshBtn: document.getElementById('refreshBtn'),
-            logoutBtn: document.getElementById('logoutBtn'),
-            editModal: document.getElementById('editModal'),
-            editForm: document.getElementById('editForm'),
-            cancelEditBtn: document.getElementById('cancelEdit'),
-            globalError: document.getElementById('globalError'),
-            globalErrorMessage: document.getElementById('globalErrorMessage'),
-            
-            // 编辑表单
-            editId: document.getElementById('editId'),
-            editPlanId: document.getElementById('editPlanId'),
-            editStartTime: document.getElementById('editStartTime'),
-            editCustomer: document.getElementById('editCustomer'),
-            editSatellite: document.getElementById('editSatellite'),
-            editStation: document.getElementById('editStation'),
-            editTaskResult: document.getElementById('editTaskResult')
-        };
+        const dropArea = document.getElementById('dropArea');
+        const fileInput = document.getElementById('fileInput');
+        const importStatus = document.getElementById('importStatus');
+        const validationErrors = document.getElementById('validationErrors');
+        const dataTableBody = document.getElementById('dataTableBody');
+        const totalCountEl = document.getElementById('totalCount');
+        const prevPageBtn = document.getElementById('prevPage');
+        const nextPageBtn = document.getElementById('nextPage');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const editModal = document.getElementById('editModal');
+        const editForm = document.getElementById('editForm');
+        const cancelEditBtn = document.getElementById('cancelEdit');
+        const globalError = document.getElementById('globalError');
+        const globalErrorMessage = document.getElementById('globalErrorMessage');
 
         // 初始化
-        function init() {
-            // 检查登录状态
-            if (!localStorage.getItem('token')) {
-                window.location.href = '/login.html';
-                return;
-            }
-
-            // 设置事件监听
-            setupEventListeners();
-            
-            // 加载数据
+        document.addEventListener('DOMContentLoaded', () => {
             loadData();
+            setupEventListeners();
+        });
+
+        // 显示全局错误信息
+        function showGlobalError(message, details) {
+            globalErrorMessage.textContent = message;
+            if (details) {
+                globalErrorMessage.innerHTML += `<div class="mt-2 text-sm">详细信息: ${details}</div>`;
+            }
+            globalError.classList.remove('hidden');
+        }
+
+        // 隐藏全局错误
+        function hideGlobalError() {
+            globalError.classList.add('hidden');
         }
 
         // 设置事件监听
         function setupEventListeners() {
-            // 文件上传
-            elements.dropArea.addEventListener('click', () => elements.fileInput.click());
-            elements.fileInput.addEventListener('change', handleFileUpload);
-            
-            // 拖放事件
-            elements.dropArea.addEventListener('dragover', (e) => {
+            // 文件上传相关
+            dropArea.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', handleFileUpload);
+            dropArea.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                elements.dropArea.classList.add('border-primary');
+                dropArea.classList.add('border-primary');
             });
-            
-            elements.dropArea.addEventListener('dragleave', () => {
-                elements.dropArea.classList.remove('border-primary');
+            dropArea.addEventListener('dragleave', () => {
+                dropArea.classList.remove('border-primary');
             });
-            
-            elements.dropArea.addEventListener('drop', (e) => {
+            dropArea.addEventListener('drop', (e) => {
                 e.preventDefault();
-                elements.dropArea.classList.remove('border-primary');
-                
+                dropArea.classList.remove('border-primary');
                 if (e.dataTransfer.files.length) {
-                    elements.fileInput.files = e.dataTransfer.files;
+                    fileInput.files = e.dataTransfer.files;
                     handleFileUpload(e);
                 }
             });
             
             // 分页和刷新
-            elements.prevPageBtn.addEventListener('click', () => {
-                if (state.currentPage > 1) {
-                    state.currentPage--;
+            prevPageBtn.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
                     loadData();
                 }
             });
-            
-            elements.nextPageBtn.addEventListener('click', () => {
-                if (state.currentPage < state.totalPages) {
-                    state.currentPage++;
-                    loadData();
-                }
+            nextPageBtn.addEventListener('click', () => {
+                currentPage++;
+                loadData();
             });
-            
-            elements.refreshBtn.addEventListener('click', () => {
+            refreshBtn.addEventListener('click', () => {
                 hideGlobalError();
                 loadData();
             });
             
             // 退出登录
-            elements.logoutBtn.addEventListener('click', () => {
-                if (confirm('确定要退出登录吗？')) {
-                    localStorage.removeItem('token');
-                    window.location.href = '/login.html';
-                }
+            logoutBtn.addEventListener('click', () => {
+                localStorage.removeItem('token');
+                window.location.href = '/login.html';
             });
             
             // 编辑模态框
-            elements.cancelEditBtn.addEventListener('click', () => {
-                elements.editModal.classList.add('hidden');
+            cancelEditBtn.addEventListener('click', () => {
+                editModal.classList.add('hidden');
             });
-            
-            elements.editForm.addEventListener('submit', async (e) => {
+            editForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 await saveEditedData();
             });
         }
 
-        // 显示全局错误
-        function showGlobalError(message, details) {
-            elements.globalErrorMessage.textContent = message;
-            if (details) {
-                elements.globalErrorMessage.innerHTML += `<div class="mt-2 text-sm">详细信息: ${details}</div>`;
-            }
-            elements.globalError.classList.remove('hidden');
-        }
-
-        // 隐藏全局错误
-        function hideGlobalError() {
-            elements.globalError.classList.add('hidden');
-        }
-
-        // 显示状态消息
-        function showStatus(message, type = 'info') {
-            elements.importStatus.textContent = message;
-            elements.importStatus.className = 'mt-4 p-3 rounded-lg flex items-center';
-            
-            if (type === 'success') {
-                elements.importStatus.classList.add('bg-success/10', 'text-success');
-            } else if (type === 'error') {
-                elements.importStatus.classList.add('bg-danger/10', 'text-danger');
-            } else {
-                elements.importStatus.classList.add('bg-primary/10', 'text-primary');
-            }
-            
-            elements.importStatus.classList.remove('hidden');
-        }
-
-        // 加载数据 - 重点修复此函数解决加载失败问题
+        // 加载数据 - 修复加载失败问题
         async function loadData() {
-            if (state.isLoading) return;
-            
             try {
-                state.isLoading = true;
                 hideGlobalError();
-                elements.dataTableBody.innerHTML = `
-                    <tr>
-                        <td colspan="6" class="px-6 py-10 text-center text-gray-500">
-                            <i class="fa fa-circle-o-notch fa-spin mr-2"></i>加载数据中...
-                        </td>
-                    </tr>
-                `;
+                dataTableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-gray-500"><i class="fa fa-circle-o-notch fa-spin mr-2"></i>加载数据中...</td></tr>';
+                
+                const response = await fetch(`/api/records?page=${currentPage}&pageSize=${pageSize}`, {
+                    method: 'GET',
+                    headers: { 
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 15000 // 15秒超时
+                });
+                
+                // 检查HTTP状态码
+                if (!response.ok) {
+                    // 处理401未授权
+                    if (response.status === 401) {
+                        showGlobalError('登录已过期，请重新登录');
+                        setTimeout(() => {
+                            localStorage.removeItem('token');
+                            window.location.href = '/login.html';
+                        }, 3000);
+                        return;
+                    }
+                    
+                    // 解析错误信息
+                    const errorData = await response.json().catch(() => null);
+                    throw new Error(
+                        errorData?.error || `服务器错误 (${response.status})`,
+                        { cause: errorData?.details }
+                    );
+                }
+                
+                const data = await response.json();
+                
+                // 验证数据结构
+                if (!data || !Array.isArray(data.records)) {
+                    throw new Error('服务器返回数据格式不正确');
+                }
+                
+                renderTable(data.records);
+                totalCountEl.textContent = data.total || 0;
                 
                 // 更新分页按钮状态
-                elements.prevPageBtn.disabled = true;
-                elements.nextPageBtn.disabled = true;
-                
-                // 关键修复：正确处理API响应
-                const response = await fetch(
-                    `/api/records?page=${state.currentPage}&pageSize=${state.pageSize}`,
-                    {
-                        headers: { 
-                            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                            'Accept': 'application/json'
-                        },
-                        signal: AbortSignal.timeout(10000) // 10秒超时
-                    }
-                );
-                
-                // 读取响应文本（无论成功与否）用于调试
-                const responseText = await response.text();
-                console.log('API响应:', responseText);
-                
-                // 尝试解析JSON
-                let data;
-                try {
-                    data = JSON.parse(responseText);
-                } catch (parseError) {
-                    throw new Error(`服务器返回无效的JSON格式: ${parseError.message}`);
-                }
-                
-                // 检查HTTP状态和响应中的success标志
-                if (!response.ok || !data.success) {
-                    throw new Error(data.error || `加载失败 (${response.status})`);
-                }
-                
-                // 验证响应结构
-                if (!data.data || !data.data.records || !Array.isArray(data.data.records)) {
-                    throw new Error('服务器返回的数据格式不正确，缺少records数组');
-                }
-                
-                if (!data.data.pagination) {
-                    throw new Error('服务器返回的数据格式不正确，缺少分页信息');
-                }
-                
-                // 更新状态
-                state.totalCount = data.data.pagination.total;
-                state.totalPages = data.data.pagination.totalPages;
-                
-                // 渲染表格
-                renderTable(data.data.records);
-                
-                // 更新分页信息
-                updatePaginationUI();
+                prevPageBtn.disabled = currentPage === 1;
+                nextPageBtn.disabled = data.total <= currentPage * pageSize;
                 
             } catch (error) {
                 console.error('加载数据失败:', error);
-                elements.dataTableBody.innerHTML = `
-                    <tr>
-                        <td colspan="6" class="px-6 py-10 text-center text-danger">
-                            <i class="fa fa-exclamation-circle mr-2"></i>加载数据失败
-                        </td>
-                    </tr>
-                `;
-                showGlobalError(error.message);
-            } finally {
-                state.isLoading = false;
-                // 确保分页按钮状态更新
-                elements.prevPageBtn.disabled = state.currentPage === 1;
-                elements.nextPageBtn.disabled = state.currentPage >= state.totalPages;
+                dataTableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-danger">加载数据失败</td></tr>';
+                showGlobalError(error.message, error.cause);
             }
         }
 
-        // 渲染数据表格
+        // 渲染表格 - 修复时间显示问题
         function renderTable(records) {
             if (records.length === 0) {
-                elements.dataTableBody.innerHTML = `
-                    <tr>
-                        <td colspan="6" class="px-6 py-10 text-center text-gray-500">
-                            没有找到数据
-                        </td>
-                    </tr>
-                `;
+                dataTableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">没有数据</td></tr>';
                 return;
             }
             
-            elements.dataTableBody.innerHTML = records.map(record => `
+            dataTableBody.innerHTML = records.map(record => {
+                // 直接使用后端返回的北京时间，不做任何转换
+                const beijingTime = record.start_time 
+                    ? formatDisplayTime(record.start_time) 
+                    : '-';
+                
+                return `
                 <tr>
                     <td class="px-6 py-4 whitespace-nowrap">${record.plan_id || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${record.start_time || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${beijingTime}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.customer || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.satellite || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.task_result || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <button onclick="editData(${record.id})" class="text-primary hover:text-primary/80 mr-3">
-                            <i class="fa fa-pencil"></i> 编辑
+                            <i class="fa fa-pencil"></i>
                         </button>
                         <button onclick="deleteData(${record.id})" class="text-danger hover:text-danger/80">
-                            <i class="fa fa-trash"></i> 删除
+                            <i class="fa fa-trash"></i>
                         </button>
                     </td>
                 </tr>
-            `).join('');
+                `;
+            }).join('');
         }
 
-        // 更新分页UI
-        function updatePaginationUI() {
-            const start = (state.currentPage - 1) * state.pageSize + 1;
-            const end = Math.min(start + state.pageSize - 1, state.totalCount);
-            
-            elements.totalCountEl.textContent = state.totalCount;
-            elements.showingRangeEl.textContent = `${start}-${end}`;
-            elements.currentPageEl.textContent = state.currentPage;
-            elements.totalPagesEl.textContent = state.totalPages;
-            
-            elements.prevPageBtn.disabled = state.currentPage === 1;
-            elements.nextPageBtn.disabled = state.currentPage >= state.totalPages;
+        // 格式化显示时间为友好格式
+        function formatDisplayTime(timeString) {
+            try {
+                // 确保时间字符串被正确解析为北京时间
+                const date = new Date(timeString);
+                if (isNaN(date.getTime())) {
+                    return timeString; // 解析失败时返回原始字符串
+                }
+                
+                // 返回本地化的北京时间
+                return date.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+            } catch (error) {
+                console.error('时间格式化错误:', error);
+                return timeString;
+            }
         }
 
         // 处理文件上传
@@ -426,12 +359,12 @@
             if (!file) return;
             
             // 重置状态区域
-            elements.importStatus.classList.add('hidden');
-            elements.validationErrors.classList.add('hidden');
+            importStatus.classList.add('hidden');
+            validationErrors.classList.add('hidden');
             hideGlobalError();
             
-            // 验证文件大小（限制10MB）
-            const maxSize = 10 * 1024 * 1024;
+            // 基本验证文件大小（限制10MB）
+            const maxSize = 10 * 1024 * 1024; // 10MB
             if (file.size > maxSize) {
                 showStatus(`文件过大（${formatFileSize(file.size)}），请上传小于10MB的文件`, 'error');
                 return;
@@ -470,8 +403,11 @@
                         const jsonSize = new TextEncoder().encode(JSON.stringify(uploadData)).length;
                         
                         showStatus(
-                            `准备上传 ${validRecords.length} 条有效记录（数据大小: ${formatFileSize(jsonSize)}），正在连接服务器...`
+                            `准备上传 ${validRecords.length} 条有效记录（数据大小: ${formatFileSize(jsonSize)}）`
                         );
+                        
+                        // 记录上传开始时间
+                        const uploadStartTime = Date.now();
                         
                         // 上传数据到服务器
                         const response = await fetch('/api/import', {
@@ -481,41 +417,71 @@
                                 'Authorization': `Bearer ${localStorage.getItem('token')}`
                             },
                             body: JSON.stringify(uploadData),
-                            signal: AbortSignal.timeout(30000)
+                            signal: AbortSignal.timeout(30000) // 30秒超时
                         });
                         
-                        const responseText = await response.text();
-                        console.log('导入API响应:', responseText);
+                        // 计算上传耗时
+                        const uploadTime = Math.round((Date.now() - uploadStartTime) / 1000);
                         
-                        let result;
-                        try {
-                            result = JSON.parse(responseText);
-                        } catch (parseError) {
-                            throw new Error(`服务器返回无效的JSON: ${parseError.message}`);
+                        // 检查HTTP状态
+                        if (!response.ok) {
+                            let errorData;
+                            try {
+                                errorData = await response.json();
+                            } catch (parseError) {
+                                const errorText = await response.text().catch(() => '无法获取错误详情');
+                                throw new Error(`服务器返回错误 (${response.status}): ${errorText}`, {
+                                    cause: { status: response.status, text: errorText }
+                                });
+                            }
+                            
+                            throw new Error(
+                                errorData.error || `上传失败 (${response.status})`, 
+                                { cause: { ...errorData, status: response.status, uploadTime } }
+                            );
                         }
                         
-                        if (!response.ok || !result.success) {
-                            throw new Error(result.error || `上传失败 (${response.status})`);
-                        }
+                        // 解析成功响应
+                        const result = await response.json();
                         
-                        showStatus(
-                            `上传成功！成功导入 ${result.data.inserted}/${result.data.total} 条记录`, 
-                            'success'
-                        );
-                        
-                        // 刷新数据列表
-                        loadData();
-                        
-                        // 显示导入错误详情（如果有）
-                        if (result.data.errors && result.data.errors.length > 0) {
-                            setTimeout(() => {
-                                showImportErrorsDetails(result.data.errors);
-                            }, 1000);
+                        if (result.success) {
+                            showStatus(
+                                `上传成功！耗时 ${uploadTime}秒，成功导入 ${result.inserted}/${result.total} 条记录`, 
+                                'success'
+                            );
+                            
+                            // 刷新数据列表
+                            loadData();
+                            
+                            // 显示导入错误详情（如果有）
+                            if (result.errors && result.errors.length > 0) {
+                                setTimeout(() => {
+                                    showImportErrorsDetails(result.errors);
+                                }, 1000);
+                            }
+                        } else {
+                            showStatus(`上传失败: ${result.error || '未知错误'}`, 'error');
                         }
                     } catch (error) {
                         console.error('文件处理错误:', error);
-                        showStatus(`处理文件失败: ${error.message}`, 'error');
-                        showGlobalError(error.message);
+                        
+                        let errorMessage = error.message;
+                        if (error.cause) {
+                            if (error.cause.status === 401) {
+                                errorMessage += '，请重新登录';
+                                setTimeout(() => {
+                                    localStorage.removeItem('token');
+                                    window.location.href = '/login.html';
+                                }, 3000);
+                            } else if (error.cause.status === 408 || error.name === 'TimeoutError') {
+                                errorMessage = '上传超时，请尝试 smaller 文件或稍后重试';
+                            } else if (error.cause.details) {
+                                errorMessage += `（详情: ${error.cause.details}）`;
+                            }
+                        }
+                        
+                        showStatus(`处理文件失败: ${errorMessage}`, 'error');
+                        showGlobalError(errorMessage, error.cause?.stack);
                     }
                 };
                 
@@ -531,29 +497,39 @@
             }
         }
 
-        // 辅助函数
+        // 辅助函数：格式化文件大小
         function formatFileSize(bytes) {
             if (bytes < 1024) return bytes + ' B';
             else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
             else return (bytes / 1048576).toFixed(1) + ' MB';
         }
 
+        // 数据验证和清洗函数
         function validateAndCleanData(records) {
             const validRecords = [];
             const invalidRecords = [];
             
             records.forEach((record, index) => {
                 if (typeof record !== 'object' || record === null || Array.isArray(record)) {
-                    invalidRecords.push({ index, reason: '记录不是有效的对象' });
+                    invalidRecords.push({
+                        index,
+                        reason: '记录不是有效的对象',
+                        value: record
+                    });
                     return;
                 }
                 
+                // 检查是否包含时间相关字段
                 const hasTimeField = record['开始时间'] !== undefined || 
                                    record.start_time !== undefined ||
-                                   record['StartTime'] !== undefined;
+                                   record['StartTime'];
                                    
                 if (!hasTimeField) {
-                    invalidRecords.push({ index, reason: '缺少时间字段' });
+                    invalidRecords.push({
+                        index,
+                        reason: '记录不包含时间字段（开始时间/start_time/StartTime）',
+                        value: JSON.stringify(record)
+                    });
                     return;
                 }
                 
@@ -563,151 +539,161 @@
             return { validRecords, invalidRecords };
         }
 
+        // 显示数据验证错误
+        function showValidationErrors(errors) {
+            validationErrors.innerHTML = `
+                <div class="font-medium mb-1"><i class="fa fa-exclamation-triangle mr-1"></i>数据验证警告：</div>
+                <ul class="list-disc pl-5 text-sm space-y-1">
+                    ${errors.slice(0, 5).map(err => `
+                        <li>第 ${err.index + 1} 条: ${err.reason}</li>
+                    `).join('')}
+                    ${errors.length > 5 ? `<li>... 还有 ${errors.length - 5} 条错误</li>` : ''}
+                </ul>
+                <div class="mt-2 text-xs">仅上传有效记录，无效记录将被忽略</div>
+            `;
+            validationErrors.classList.remove('hidden');
+        }
+
+        // 显示导入错误详情
         function showImportErrorsDetails(errors) {
             const errorDetails = errors.map(err => 
                 `第 ${err.index + 1} 条: ${err.error}`
             ).join('\n');
             
-            alert(`部分记录导入失败:\n\n${errorDetails}`);
+            alert(`部分记录导入失败:\n\n${errorDetails}\n\n请检查这些记录后重新尝试`);
+        }
+
+        // 显示状态消息
+        function showStatus(message, type = 'info') {
+            importStatus.innerHTML = `
+                <i class="fa ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'} mr-2"></i>
+                ${message}
+            `;
+            importStatus.className = 'mt-4 p-3 rounded-lg flex items-center';
+            
+            if (type === 'success') {
+                importStatus.classList.add('bg-success/10', 'text-success');
+            } else if (type === 'error') {
+                importStatus.classList.add('bg-danger/10', 'text-danger');
+            } else {
+                importStatus.classList.add('bg-primary/10', 'text-primary');
+            }
+            
+            importStatus.classList.remove('hidden');
         }
 
         // 编辑数据
         window.editData = async (id) => {
             try {
-                elements.editModal.classList.add('hidden');
-                showStatus('正在加载数据...');
-                
                 const response = await fetch(`/api/records?id=${id}`, {
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    timeout: 10000
                 });
                 
-                const responseText = await response.text();
-                console.log('获取单条记录响应:', responseText);
-                
-                let result;
-                try {
-                    result = JSON.parse(responseText);
-                } catch (parseError) {
-                    throw new Error(`解析响应失败: ${parseError.message}`);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => null);
+                    throw new Error(errorData?.error || `获取记录失败 (${response.status})`);
                 }
                 
-                if (!response.ok || !result.success) {
-                    throw new Error(result.error || `获取记录失败 (${response.status})`);
-                }
+                const data = await response.json();
                 
-                const data = result.data;
-                
-                // 填充表单
-                elements.editId.value = data.id;
-                elements.editPlanId.value = data.plan_id || '';
+                document.getElementById('editId').value = data.id;
+                document.getElementById('editPlanId').value = data.plan_id || '';
                 
                 if (data.start_time) {
-                    // 转换为datetime-local格式
+                    // 转换为datetime-local格式（北京时间）
                     const date = new Date(data.start_time);
-                    // 关键修复：确保时间正确转换
-                    const dateTimeLocal = date.toISOString().slice(0, 16);
-                    elements.editStartTime.value = dateTimeLocal;
+                    // 确保获取的是北京时区的时间
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const hours = String(date.getHours()).padStart(2, '0');
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    
+                    document.getElementById('editStartTime').value = `${year}-${month}-${day}T${hours}:${minutes}`;
                 } else {
-                    elements.editStartTime.value = '';
+                    document.getElementById('editStartTime').value = '';
                 }
                 
-                elements.editCustomer.value = data.customer || '';
-                elements.editSatellite.value = data.satellite || '';
-                elements.editStation.value = data.station || '';
-                elements.editTaskResult.value = data.task_result || '';
+                document.getElementById('editCustomer').value = data.customer || '';
+                document.getElementById('editSatellite').value = data.satellite || '';
+                document.getElementById('editStation').value = data.station || '';
+                document.getElementById('editTaskResult').value = data.task_result || '';
                 
-                elements.importStatus.classList.add('hidden');
-                elements.editModal.classList.remove('hidden');
-                
+                editModal.classList.remove('hidden');
             } catch (error) {
-                console.error('加载编辑数据失败:', error);
-                showStatus(`加载数据失败: ${error.message}`, 'error');
+                alert('加载数据失败: ' + error.message);
             }
         };
 
-        // 保存编辑数据
+        // 保存编辑的数据
         async function saveEditedData() {
-            const id = elements.editId.value;
+            const id = document.getElementById('editId').value;
             const data = {
-                plan_id: elements.editPlanId.value,
-                start_time: elements.editStartTime.value,
-                customer: elements.editCustomer.value,
-                satellite: elements.editSatellite.value,
-                station: elements.editStation.value,
-                task_result: elements.editTaskResult.value
+                plan_id: document.getElementById('editPlanId').value,
+                start_time: document.getElementById('editStartTime').value,
+                customer: document.getElementById('editCustomer').value,
+                satellite: document.getElementById('editSatellite').value,
+                station: document.getElementById('editStation').value,
+                task_result: document.getElementById('editTaskResult').value
             };
             
             try {
-                showStatus('正在保存数据...');
-                
                 const response = await fetch(`/api/records/${id}`, {
                     method: 'PUT',
                     headers: { 
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${localStorage.getItem('token')}`
                     },
-                    body: JSON.stringify(data)
+                    body: JSON.stringify(data),
+                    timeout: 10000
                 });
                 
-                const responseText = await response.text();
-                console.log('保存记录响应:', responseText);
-                
-                let result;
-                try {
-                    result = JSON.parse(responseText);
-                } catch (parseError) {
-                    throw new Error(`解析响应失败: ${parseError.message}`);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => null);
+                    throw new Error(errorData?.error || `保存失败 (${response.status})`);
                 }
                 
-                if (!response.ok || !result.success) {
-                    throw new Error(result.error || `保存失败 (${response.status})`);
-                }
+                const result = await response.json();
                 
-                elements.editModal.classList.add('hidden');
-                showStatus('数据保存成功', 'success');
-                loadData();
+                if (result.success) {
+                    editModal.classList.add('hidden');
+                    loadData();
+                } else {
+                    alert(`保存失败: ${result.error}`);
+                }
             } catch (error) {
-                console.error('保存数据失败:', error);
-                showStatus(`保存失败: ${error.message}`, 'error');
+                alert('保存失败: ' + error.message);
             }
         }
 
         // 删除数据
         window.deleteData = async (id) => {
-            if (!confirm('确定要删除这条记录吗？此操作不可恢复！')) return;
+            if (!confirm('确定要删除这条记录吗？')) return;
             
             try {
-                showStatus('正在删除数据...');
-                
                 const response = await fetch(`/api/records/${id}`, {
                     method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    timeout: 10000
                 });
                 
-                const responseText = await response.text();
-                console.log('删除记录响应:', responseText);
-                
-                let result;
-                try {
-                    result = JSON.parse(responseText);
-                } catch (parseError) {
-                    throw new Error(`解析响应失败: ${parseError.message}`);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => null);
+                    throw new Error(errorData?.error || `删除失败 (${response.status})`);
                 }
                 
-                if (!response.ok || !result.success) {
-                    throw new Error(result.error || `删除失败 (${response.status})`);
-                }
+                const result = await response.json();
                 
-                showStatus('数据删除成功', 'success');
-                loadData();
+                if (result.success) {
+                    loadData();
+                } else {
+                    alert(`删除失败: ${result.error}`);
+                }
             } catch (error) {
-                console.error('删除数据失败:', error);
-                showStatus(`删除失败: ${error.message}`, 'error');
+                alert('删除失败: ' + error.message);
             }
         };
-
-        // 初始化应用
-        document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
