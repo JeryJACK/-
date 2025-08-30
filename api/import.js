@@ -9,23 +9,41 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 精确的Excel日期时间解析函数
+// 精确解析Excel数值中的时间部分
 function parseExcelDateTime(excelValue) {
-  // Excel的起始日期（1900年1月1日）
+  // 分离整数部分（日期）和小数部分（时间）
+  const days = Math.floor(excelValue);
+  const timeFraction = excelValue - days;
+  
+  // Excel起始日期（1900年1月1日）
   const excelStartDate = new Date(1900, 0, 1);
-  // Excel错误地认为1900年是闰年，所以需要减去2天的修正
-  const daysToAdd = excelValue - 2;
   
-  // 计算总毫秒数（一天 = 86400000毫秒）
-  const totalMilliseconds = daysToAdd * 86400000;
+  // 修正Excel 1900年闰年错误
+  const adjustedDays = days - 2;
   
-  // 计算最终日期
-  const resultDate = new Date(excelStartDate.getTime() + totalMilliseconds);
+  // 计算基准日期（只包含日期部分）
+  const baseDate = new Date(excelStartDate);
+  baseDate.setDate(excelStartDate.getDate() + adjustedDays);
+  baseDate.setHours(0, 0, 0, 0); // 清零时间部分
   
-  // 验证日期是否合理（2000-2100年之间）
-  if (resultDate.getFullYear() < 2000 || resultDate.getFullYear() > 2100) {
-    console.warn(`解析结果超出合理范围: ${excelValue} -> ${resultDate.toISOString()}`);
-  }
+  // 精确计算时间部分（小时、分钟、秒、毫秒）
+  const totalSeconds = timeFraction * 86400; // 一天有86400秒
+  const hours = Math.floor(totalSeconds / 3600);
+  const remainingSeconds = totalSeconds % 3600;
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = Math.floor(remainingSeconds % 60);
+  const milliseconds = Math.round((remainingSeconds % 60 - seconds) * 1000);
+  
+  // 构建完整日期时间
+  const resultDate = new Date(baseDate);
+  resultDate.setHours(hours, minutes, seconds, milliseconds);
+  
+  // 详细日志，方便调试
+  console.log(`Excel时间解析详情: 
+    原始值: ${excelValue}
+    日期部分: ${days}天 -> ${baseDate.toISOString().split('T')[0]}
+    时间比例: ${timeFraction} -> ${hours}:${minutes}:${seconds}.${milliseconds}
+    解析结果: ${resultDate.toISOString()}`);
   
   return resultDate;
 }
@@ -34,17 +52,15 @@ function parseExcelDateTime(excelValue) {
 function parseDateTime(dateTimeValue) {
   if (!dateTimeValue) return null;
   
-  // 1. 优先处理Excel数值日期（你的问题场景）
+  // 1. 处理Excel数值日期时间
   if (typeof dateTimeValue === 'number') {
-    // 检查是否是合理的Excel日期数值（1970年之后）
-    if (dateTimeValue > 25569) { // 25569是1970-01-01的Excel数值
+    if (dateTimeValue > 25569) { // 确保是1970年之后的日期
       const date = parseExcelDateTime(dateTimeValue);
-      console.log(`Excel数值解析: ${dateTimeValue} -> ${date.toISOString()}`);
       return date.toISOString();
     }
   }
   
-  // 2. 处理标准字符串格式 "YYYY-MM-DD HH:mm:ss"
+  // 2. 处理标准字符串格式
   if (typeof dateTimeValue === 'string') {
     const standardPattern = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
     const standardMatch = dateTimeValue.match(standardPattern);
@@ -53,7 +69,7 @@ function parseDateTime(dateTimeValue) {
       const [, year, month, day, hours, minutes, seconds] = standardMatch;
       const date = new Date(
         parseInt(year, 10),
-        parseInt(month, 10) - 1, // 月份修正
+        parseInt(month, 10) - 1,
         parseInt(day, 10),
         parseInt(hours, 10),
         parseInt(minutes, 10),
@@ -61,19 +77,17 @@ function parseDateTime(dateTimeValue) {
       );
       
       if (!isNaN(date.getTime())) {
-        console.log(`标准格式解析: ${dateTimeValue} -> ${date.toISOString()}`);
         return date.toISOString();
       }
     }
   }
   
-  // 3. 处理其他常见格式
+  // 3. 处理其他字符串格式
   if (typeof dateTimeValue === 'string') {
     const cleaned = dateTimeValue.trim();
     const date = new Date(cleaned);
     
     if (!isNaN(date.getTime())) {
-      console.log(`通用格式解析: ${cleaned} -> ${date.toISOString()}`);
       return date.toISOString();
     }
   }
@@ -83,6 +97,7 @@ function parseDateTime(dateTimeValue) {
 }
 
 export default async function handler(req, res) {
+  // 保持与之前相同的API处理逻辑...
   if (req.method !== 'POST') {
     return res.status(405).json({ error: '方法不允许，仅支持POST' });
   }
@@ -113,12 +128,6 @@ export default async function handler(req, res) {
         
         if (!startTime) {
           throw new Error(`无法解析时间格式: ${timeValue}`);
-        }
-        
-        // 验证解析后的年份是否合理
-        const parsedYear = new Date(startTime).getFullYear();
-        if (parsedYear < 2000 || parsedYear > 2100) {
-          throw new Error(`解析结果年份不合理: ${parsedYear} (原始值: ${timeValue})`);
         }
         
         await pool.query(
