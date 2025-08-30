@@ -1,5 +1,5 @@
-const { Pool } = require('pg');
-const { verifyAuth } = require('../lib/auth');
+import { Pool } from 'pg';
+import { verifyAuth } from '../lib/auth';
 
 let pool;
 if (!global._pgPool) {
@@ -9,65 +9,51 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-module.exports = async function handler(req, res) {
-  // 对于获取数据列表，我们可以不强制验证身份
-  // 如果你希望只有登录用户才能访问，可以启用下面的验证
-  // const auth = await verifyAuth(req);
-  // if (!auth.success) {
-  //   return res.status(401).json({ error: auth.error });
-  // }
-
+export default async function handler(req, res) {
+  // 只允许GET方法
   if (req.method !== 'GET') {
     return res.status(405).json({ error: '方法不允许，仅支持GET' });
   }
 
-  const { page = 1, pageSize = 10, search = '' } = req.query;
-  const offset = (page - 1) * pageSize;
+  // 验证身份 - 对于公开访问的页面可以移除这部分
+  // 但管理页面必须保留验证
+  const auth = await verifyAuth(req);
+  if (!auth.success) {
+    // 如果是管理页面请求，返回未授权
+    if (req.headers.referer && req.headers.referer.includes('/admin.html')) {
+      return res.status(401).json({ error: auth.error });
+    }
+    // 对于公开页面，可以继续但可能限制数据访问
+  }
 
   try {
-    let query, countQuery, params;
+    // 解析分页参数
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 10;
+    const offset = (page - 1) * pageSize;
 
-    if (search) {
-      // 带搜索功能的查询
-      query = `
-        SELECT * FROM raw_records 
-        WHERE plan_id ILIKE $1 OR customer ILIKE $1 OR satellite ILIKE $1
-        ORDER BY start_time DESC 
-        LIMIT $2 OFFSET $3
-      `;
-      countQuery = `
-        SELECT COUNT(*) FROM raw_records 
-        WHERE plan_id ILIKE $1 OR customer ILIKE $1 OR satellite ILIKE $1
-      `;
-      params = [`%${search}%`, pageSize, offset];
-    } else {
-      // 普通查询
-      query = `
-        SELECT * FROM raw_records 
-        ORDER BY start_time DESC 
-        LIMIT $1 OFFSET $2
-      `;
-      countQuery = 'SELECT COUNT(*) FROM raw_records';
-      params = [pageSize, offset];
-    }
-
-    // 获取记录列表
-    const result = await pool.query(query, search ? params : [pageSize, offset]);
-    
-    // 获取总记录数
-    const countResult = await pool.query(countQuery, search ? [`%${search}%`] : []);
+    // 先获取总记录数
+    const countResult = await pool.query('SELECT COUNT(*) FROM raw_records');
     const total = parseInt(countResult.rows[0].count);
 
+    // 获取当前页的记录
+    const recordsResult = await pool.query(
+      `SELECT * FROM raw_records 
+       ORDER BY created_at DESC 
+       LIMIT $1 OFFSET $2`,
+      [pageSize, offset]
+    );
+
     res.json({
-      records: result.rows,
+      success: true,
+      records: recordsResult.rows,
       total,
-      page: parseInt(page),
-      pageSize: parseInt(pageSize),
-      pages: Math.ceil(total / pageSize)
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize)
     });
   } catch (error) {
-    console.error('获取记录错误:', error);
+    console.error('获取记录列表错误:', error);
     res.status(500).json({ error: '服务器错误，获取记录失败' });
   }
-};
-    
+}
