@@ -57,10 +57,10 @@ export default async function handler(req, res) {
             record['计划ID'] || record.plan_id || null,
             rawTimeValue,  // 直接存储原始时间字符串
             rawTimeValue,  // 存储原始时间字符串用于参考
-            record['客户'] || record.customer || null,
-            record['卫星'] || record.satellite || null,
-            record['测站'] || record.station || null,
-            record['任务结果'] || record.task_result || null,
+            record['所属客户'] || record.customer || null,
+            record['卫星名称'] || record.satellite || null,
+            record['测站名称'] || record.station || null,
+            record['任务结果状态'] || record.task_result || null,
             record['任务类型'] || record.task_type || null,
             record ? JSON.stringify(record) : null
           ]
@@ -94,3 +94,4 @@ export default async function handler(req, res) {
   }
 }
     
+
