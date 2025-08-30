@@ -1,296 +1,201 @@
-<const { Pool } = require('pg');
-const { verifyAuth } = require('../lib/auth');
-const { parseBeijingTime, formatForDatabase } = require('../lib/time-handler');
-const fs = require('fs');
-const path = require('path');
+import { Pool } from 'pg';
+import { verifyAuth } from '../lib/auth';
 
-// 创建日志目录
-const logDir = path.join(__dirname, '../logs');
-if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir, { recursive: true });
-}
-
-// 日志记录函数
-function logError(message, error, requestId) {
-    const logMessage = `[${new Date().toISOString()}] [${requestId}] ${message}: ${error.message}\n${error.stack}\n\n`;
-    console.error(logMessage);
-    // 写入日志文件
-    fs.appendFileSync(path.join(logDir, 'import-errors.log'), logMessage);
-}
-
-// 数据库连接
 let pool;
-try {
-    pool = new Pool({ 
-        connectionString: process.env.POSTGRES_URL,
-        connectionTimeoutMillis: 5000,
-        idleTimeoutMillis: 30000
-    });
-    
-    // 测试连接
-    pool.query('SELECT NOW()', (err) => {
-        if (err) {
-            console.error('数据库连接测试失败:', err.message);
-        } else {
-            console.log('数据库连接成功');
-        }
-    });
-    
-    global._pgPool = pool;
-} catch (error) {
-    console.error('创建数据库连接池失败:', error.message);
-    global._pgError = error;
+if (!global._pgPool) {
+  pool = new Pool({ connectionString: process.env.POSTGRES_URL });
+  global._pgPool = pool;
+} else {
+  pool = global._pgPool;
 }
 
-module.exports = async (req, res) => {
-    // 生成唯一请求ID，便于追踪
-    const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 8);
-    console.log(`[${requestId}] 收到文件导入请求`);
+// 调试用：跟踪时间解析过程
+function logTimeProcessing(message, value) {
+  console.log(`[时间处理] ${message}:`, value);
+}
 
-    // 设置超时处理（5分钟）
-    const timeoutId = setTimeout(() => {
-        console.error(`[${requestId}] 请求处理超时`);
-        res.status(504).json({
-            success: false,
-            error: '请求处理超时',
-            requestId
-        });
-    }, 300000);
-
-    try {
-        // 检查请求方法
-        if (req.method !== 'POST') {
-            const error = '方法不允许，仅支持POST';
-            console.log(`[${requestId}] 错误: ${error}`);
-            return res.status(405).json({
-                success: false,
-                error,
-                requestId
-            });
-        }
-
-        // 检查数据库连接错误
-        if (global._pgError) {
-            const error = '数据库连接初始化失败';
-            logError(error, global._pgError, requestId);
-            return res.status(500).json({
-                success: false,
-                error,
-                requestId,
-                details: process.env.NODE_ENV === 'development' ? global._pgError.message : undefined
-            });
-        }
-
-        if (!pool) {
-            const error = '数据库连接池未初始化';
-            console.error(`[${requestId}] 错误: ${error}`);
-            return res.status(500).json({
-                success: false,
-                error,
-                requestId
-            });
-        }
-
-        // 验证身份
-        try {
-            const auth = await verifyAuth(req);
-            if (!auth.success) {
-                console.log(`[${requestId}] 认证失败: ${auth.error}`);
-                return res.status(401).json({
-                    success: false,
-                    error: auth.error,
-                    requestId
-                });
-            }
-        } catch (authError) {
-            const error = '认证过程发生错误';
-            logError(error, authError, requestId);
-            return res.status(500).json({
-                success: false,
-                error,
-                requestId,
-                details: process.env.NODE_ENV === 'development' ? authError.message : undefined
-            });
-        }
-
-        // 验证请求体
-        if (!req.body) {
-            const error = '请求体为空';
-            console.log(`[${requestId}] 错误: ${error}`);
-            return res.status(400).json({
-                success: false,
-                error,
-                requestId
-            });
-        }
-
-        // 验证records字段
-        if (!req.body.records || !Array.isArray(req.body.records)) {
-            const error = '请求数据格式不正确，需要包含records数组';
-            console.log(`[${requestId}] 错误: ${error}，收到的数据:`, typeof req.body.records);
-            return res.status(400).json({
-                success: false,
-                error,
-                requestId
-            });
-        }
-
-        const { records } = req.body;
-        console.log(`[${requestId}] 开始导入 ${records.length} 条记录`);
-
-        // 验证记录数量
-        if (records.length === 0) {
-            console.log(`[${requestId}] 没有可导入的记录`);
-            return res.json({
-                success: true,
-                data: {
-                    inserted: 0,
-                    total: 0,
-                    errors: []
-                },
-                message: '没有可导入的记录',
-                requestId
-            });
-        }
-
-        // 限制单次导入最大记录数（防止内存溢出）
-        const maxRecordsPerImport = 1000;
-        if (records.length > maxRecordsPerImport) {
-            const error = `单次导入记录数不能超过 ${maxRecordsPerImport} 条，请分批导入`;
-            console.log(`[${requestId}] 错误: ${error}`);
-            return res.status(400).json({
-                success: false,
-                error,
-                requestId
-            });
-        }
-
-        // 数据库事务处理
-        let client;
-        try {
-            // 获取数据库客户端
-            client = await pool.connect();
-            console.log(`[${requestId}] 获取数据库连接成功`);
-
-            // 开始事务
-            await client.query('BEGIN');
-            console.log(`[${requestId}] 事务已开始`);
-
-            let inserted = 0;
-            const errors = [];
-
-            for (let i = 0; i < records.length; i++) {
-                try {
-                    const record = records[i];
-                    
-                    // 验证记录格式
-                    if (typeof record !== 'object' || record === null || Array.isArray(record)) {
-                        throw new Error('记录必须是有效的非数组对象');
-                    }
-
-                    // 获取时间值
-                    const timeValue = record['开始时间'] || record.start_time || record.StartTime;
-                    
-                    // 解析为北京时间
-                    const beijingDate = parseBeijingTime(timeValue);
-                    if (!beijingDate) {
-                        throw new Error(`时间解析失败: ${timeValue || '未提供时间'}`);
-                    }
-                    
-                    // 格式化为数据库存储格式
-                    const dbTime = formatForDatabase(beijingDate);
-                    if (!dbTime) {
-                        throw new Error('时间格式化为数据库格式失败');
-                    }
-                    
-                    // 执行插入
-                    const result = await client.query(
-                        `INSERT INTO raw_records 
-                         (plan_id, start_time, customer, satellite, station, 
-                          task_result, task_type, raw)
-                         VALUES ($1, $2::TIMESTAMPTZ, $3, $4, $5, $6, $7, $8)
-                         RETURNING id`,
-                        [
-                            record['计划ID'] || record.plan_id || null,
-                            dbTime,  // 存储带北京时区的时间
-                            record['客户'] || record.customer || null,
-                            record['卫星'] || record.satellite || null,
-                            record['测站'] || record.station || null,
-                            record['任务结果'] || record.task_result || null,
-                            record['任务类型'] || record.task_type || null,
-                            JSON.stringify(record)
-                        ]
-                    );
-                    
-                    if (result.rows && result.rows.length > 0) {
-                        inserted++;
-                        console.log(`[${requestId}] 第${i+1}条记录导入成功，ID: ${result.rows[0].id}`);
-                    } else {
-                        throw new Error('插入记录后未返回ID');
-                    }
-                } catch (error) {
-                    const errorObj = {
-                        index: i,
-                        error: error.message,
-                        record: JSON.stringify(record, null, 2).substring(0, 500) // 限制长度
-                    };
-                    errors.push(errorObj);
-                    console.error(`[${requestId}] 处理第${i+1}条记录失败:`, error.message);
-                }
-            }
-
-            // 提交事务
-            await client.query('COMMIT');
-            console.log(`[${requestId}] 事务已提交，成功导入 ${inserted} 条记录`);
-            
-            res.json({
-                success: true,
-                data: {
-                    inserted,
-                    total: records.length,
-                    errors
-                },
-                message: `成功导入${inserted}/${records.length}条记录`,
-                requestId
-            });
-        } catch (transactionError) {
-            // 回滚事务
-            if (client) {
-                try {
-                    await client.query('ROLLBACK');
-                    console.log(`[${requestId}] 事务已回滚`);
-                } catch (rollbackError) {
-                    logError('回滚事务失败', rollbackError, requestId);
-                }
-            }
-            
-            const error = '数据库事务处理失败';
-            logError(error, transactionError, requestId);
-            res.status(500).json({
-                success: false,
-                error,
-                requestId,
-                details: process.env.NODE_ENV === 'development' ? transactionError.message : undefined
-            });
-        } finally {
-            // 释放客户端
-            if (client) {
-                client.release();
-                console.log(`[${requestId}] 数据库连接已释放`);
-            }
-        }
-    } catch (error) {
-        logError('导入请求处理失败', error, requestId);
-        res.status(500).json({
-            success: false,
-            error: '处理导入请求时发生错误',
-            requestId,
-            details: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    } finally {
-        // 清除超时
-        clearTimeout(timeoutId);
-        console.log(`[${requestId}] 请求处理结束`);
+// 核心修复：正确解析北京时间（不做UTC转换，避免减去8小时）
+function parseBeijingTime(dateValue) {
+  if (!dateValue) {
+    logTimeProcessing('空时间值', dateValue);
+    return null;
+  }
+  
+  // 处理Excel数字日期格式（关键修复：正确提取时间部分）
+  if (typeof dateValue === 'number') {
+    logTimeProcessing('Excel数字格式原始值', dateValue);
+    
+    // Excel日期是自1900年1月1日以来的天数（小数部分为时间）
+    const baseDate = new Date(1900, 0, 1);
+    // 修正Excel的1900年闰年错误（Excel错误地认为1900是闰年）
+    const days = dateValue - 2;
+    const totalMilliseconds = days * 24 * 60 * 60 * 1000;
+    
+    // 创建日期对象（直接作为本地时间，即北京时间）
+    const date = new Date(baseDate.getTime() + totalMilliseconds);
+    
+    if (!isNaN(date.getTime())) {
+      logTimeProcessing('Excel数字解析结果（北京时间）', date.toLocaleString('zh-CN'));
+      return date;
     }
-};
+  }
+  
+  // 处理字符串格式时间
+  if (typeof dateValue === 'string') {
+    logTimeProcessing('字符串格式原始值', dateValue);
+    
+    // 尝试直接解析为北京时间（不做时区转换）
+    const date = new Date(dateValue);
+    if (!isNaN(date.getTime())) {
+      logTimeProcessing('字符串直接解析结果（北京时间）', date.toLocaleString('zh-CN'));
+      return date;
+    }
+    
+    // 增强的中文日期格式处理
+    const patterns = [
+      { regex: /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$/, parts: 7 },
+      { regex: /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{1,2})$/, parts: 6 },
+      { regex: /^(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$/, parts: 7 },
+      { regex: /^(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{1,2})$/, parts: 6 },
+      { regex: /^(\d{4})\/(\d{1,2})\/(\d{1,2})\s*(\d{1,2}):(\d{1,2})$/, parts: 6 }
+    ];
+    
+    for (const pattern of patterns) {
+      const match = dateValue.match(pattern.regex);
+      if (match) {
+        const year = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10) - 1; // 月份从0开始
+        const day = parseInt(match[3], 10);
+        const hours = pattern.parts >= 6 ? parseInt(match[4], 10) : 0;
+        const minutes = pattern.parts >= 6 ? parseInt(match[5], 10) : 0;
+        const seconds = pattern.parts === 7 ? parseInt(match[6], 10) : 0;
+        
+        // 验证时间范围
+        if (hours < 0 || hours > 23) continue;
+        if (minutes < 0 || minutes > 59) continue;
+        if (seconds < 0 || seconds > 59) continue;
+        
+        const date = new Date(year, month, day, hours, minutes, seconds);
+        if (!isNaN(date.getTime())) {
+          logTimeProcessing('格式匹配解析结果（北京时间）', date.toLocaleString('zh-CN'));
+          return date;
+        }
+      }
+    }
+  }
+  
+  console.warn(`无法解析的时间格式: ${dateValue} (类型: ${typeof dateValue})`);
+  return null;
+}
+
+// 格式化时间为数据库存储格式（关键修复：直接使用北京时间，不转UTC）
+function formatTimeForDB(date) {
+  if (!date) return null;
+  
+  // 直接获取北京时间的各个部分（不做时区转换）
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  
+  // 明确指定为北京时间时区（+08:00）
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}+08`;
+}
+
+export default async function handler(req, res) {
+  try {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: '方法不允许，仅支持POST' });
+    }
+    
+    const auth = await verifyAuth(req);
+    if (!auth.success) {
+      return res.status(401).json({ error: auth.error });
+    }
+    
+    const { records } = req.body;
+    
+    if (!records || !Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ error: '没有提供有效的记录数据' });
+    }
+    
+    await pool.query('BEGIN');
+    
+    let inserted = 0;
+    const errors = [];
+    
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      let timeValue;
+      
+      try {
+        if (typeof record !== 'object' || record === null) {
+          throw new Error('记录必须是有效的对象');
+        }
+        
+        // 获取时间值
+        timeValue = record['开始时间'] || record.start_time || record['StartTime'];
+        
+        const beijingTime = parseBeijingTime(timeValue);
+        if (!beijingTime) {
+          throw new Error(`时间解析失败: ${timeValue || '未提供时间'}`);
+        }
+        
+        const dbTime = formatTimeForDB(beijingTime);
+        if (!dbTime) {
+          throw new Error('时间格式化为数据库格式失败');
+        }
+        
+        // 执行插入（确保字段与表结构一致）
+        await pool.query(
+          `INSERT INTO raw_records 
+           (plan_id, start_time, customer, satellite, station, 
+            task_result, task_type, raw)
+           VALUES ($1, $2::TIMESTAMPTZ, $3, $4, $5, $6, $7, $8)`,
+          [
+            record['计划ID'] || record.plan_id || null,
+            dbTime,  // 直接存储北京时间（带+08时区）
+            record['客户'] || record.customer || null,
+            record['卫星'] || record.satellite || null,
+            record['测站'] || record.station || null,
+            record['任务结果'] || record.task_result || null,
+            record['任务类型'] || record.task_type || null,
+            JSON.stringify(record)
+          ]
+        );
+        
+        inserted++;
+      } catch (error) {
+        errors.push({
+          index: i,
+          error: error.message,
+          originalTime: timeValue !== undefined ? String(timeValue) : '无时间值'
+        });
+        console.error(`处理第${i+1}条记录失败:`, error);
+      }
+    }
+    
+    await pool.query('COMMIT');
+    
+    res.json({
+      success: true,
+      inserted,
+      total: records.length,
+      errors,
+      message: `成功导入${inserted}/${records.length}条记录`
+    });
+  } catch (error) {
+    // 事务回滚并返回详细错误信息
+    if (pool) await pool.query('ROLLBACK');
+    console.error('导入接口错误:', error);
+    // 关键修复：返回具体错误信息，帮助前端调试
+    res.status(500).json({ 
+      error: '服务器处理失败',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+}
     
