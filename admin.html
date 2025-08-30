@@ -160,7 +160,7 @@
 
         // 设置事件监听
         function setupEventListeners() {
-            // 文件上传相关事件（保持不变）
+            // 文件上传相关事件
             dropArea.addEventListener('click', () => fileInput.click());
             fileInput.addEventListener('change', handleFileUpload);
             
@@ -216,60 +216,48 @@
         }
 
         /**
-         * 核心修复：正确处理UTC时间到本地时间的转换
-         * 将后端返回的UTC时间（带Z后缀）转换为本地时间（UTC+8）显示
+         * 核心修改：完全按照文件原始时间显示，不进行任何时区转换
+         * 直接显示数据库中存储的时间，与Excel文件保持一致
          */
-        function formatDateTime(utcTimeString) {
-            if (!utcTimeString) return '-';
+        function formatDateTime(rawTimeString) {
+            if (!rawTimeString) return '-';
             
-            // 确保解析为UTC时间
-            const date = new Date(utcTimeString);
+            // 解析原始时间字符串
+            const date = new Date(rawTimeString);
             
             // 检查日期是否有效
             if (isNaN(date.getTime())) return '-';
             
-            // 转换为本地时间（Asia/Shanghai）显示
-            return date.toLocaleString('zh-CN', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false,
-                timeZone: 'Asia/Shanghai'
-            }).replace(',', ' ');
+            // 直接提取UTC时间部分，不做时区转换
+            const year = date.getUTCFullYear();
+            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(date.getUTCDate()).padStart(2, '0');
+            const hours = String(date.getUTCHours()).padStart(2, '0');
+            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+            const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+            
+            // 返回与Excel文件中相同的时间格式
+            return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
         }
 
         /**
-         * 将本地时间转换为UTC时间字符串（用于提交到后端）
+         * 将输入的本地时间直接作为UTC时间提交，不做时区转换
          */
-        function localToUTC(localDateTimeString) {
+        function inputToRawTime(localDateTimeString) {
             if (!localDateTimeString) return null;
             
-            // 解析本地时间
-            const localDate = new Date(`${localDateTimeString}+08:00`);
-            
-            // 转换为UTC时间字符串
-            return localDate.toISOString();
+            // 将输入的时间直接视为UTC时间
+            return `${localDateTimeString}:00.000Z`;
         }
 
         /**
-         * 将UTC时间转换为本地时间的datetime-local格式（用于编辑框）
+         * 将原始时间转换为编辑框需要的格式，不做时区转换
          */
-        function utcToLocalDateTimeInput(utcTimeString) {
-            if (!utcTimeString) return '';
+        function rawTimeToInput(rawTimeString) {
+            if (!rawTimeString) return '';
             
-            // 解析UTC时间
-            const utcDate = new Date(utcTimeString);
-            
-            // 转换为本地时间
-            const localDate = new Date(
-                utcDate.getTime() + utcDate.getTimezoneOffset() * 60000
-            );
-            
-            // 格式化为datetime-local所需的格式 (yyyy-MM-ddThh:mm)
-            return localDate.toISOString().slice(0, 16);
+            // 直接截取需要的部分，不做时区转换
+            return rawTimeString.slice(0, 16);
         }
 
         // 加载数据
@@ -323,7 +311,7 @@
             `).join('');
         }
 
-        // 处理文件上传（保持不变）
+        // 处理文件上传
         async function handleFileUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -369,7 +357,7 @@
             }
         }
 
-        // 显示状态消息（保持不变）
+        // 显示状态消息
         function showStatus(message, type = 'info') {
             importStatus.textContent = message;
             importStatus.className = 'mt-4 p-3 rounded-lg flex items-center';
@@ -385,7 +373,7 @@
             importStatus.classList.remove('hidden');
         }
 
-        // 编辑数据（修复时间处理）
+        // 编辑数据
         window.editData = async (id) => {
             try {
                 const response = await fetch(`/api/records/${id}`, {
@@ -399,11 +387,10 @@
                     return;
                 }
                 
-                // 填充表单，重点修复时间处理
+                // 填充表单，不做时区转换
                 document.getElementById('editId').value = data.id;
                 document.getElementById('editPlanId').value = data.plan_id || '';
-                // 将UTC时间转换为本地时间的datetime-local格式
-                document.getElementById('editStartTime').value = utcToLocalDateTimeInput(data.start_time);
+                document.getElementById('editStartTime').value = rawTimeToInput(data.start_time);
                 document.getElementById('editCustomer').value = data.customer || '';
                 document.getElementById('editSatellite').value = data.satellite || '';
                 document.getElementById('editStation').value = data.station || '';
@@ -416,15 +403,15 @@
             }
         };
 
-        // 保存编辑的数据（修复时间处理）
+        // 保存编辑的数据
         async function saveEditedData() {
             const id = document.getElementById('editId').value;
-            // 将本地时间转换为UTC时间再提交
-            const localStartTime = document.getElementById('editStartTime').value;
+            // 直接使用输入的时间作为原始时间，不做时区转换
+            const inputStartTime = document.getElementById('editStartTime').value;
             
             const data = {
                 plan_id: document.getElementById('editPlanId').value,
-                start_time: localToUTC(localStartTime), // 关键修复：转换为UTC时间
+                start_time: inputToRawTime(inputStartTime), // 不做时区转换
                 customer: document.getElementById('editCustomer').value,
                 satellite: document.getElementById('editSatellite').value,
                 station: document.getElementById('editStation').value,
@@ -454,7 +441,7 @@
             }
         }
 
-        // 删除数据（保持不变）
+        // 删除数据
         window.deleteData = async (id) => {
             if (!confirm('确定要删除这条记录吗？')) return;
             
