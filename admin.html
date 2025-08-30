@@ -32,7 +32,6 @@
                 <input type="file" id="fileInput" accept=".xlsx" class="hidden">
             </div>
             <div id="importStatus" class="mt-4 hidden"></div>
-            <!-- 新增数据验证提示区域 -->
             <div id="validationErrors" class="mt-4 hidden bg-yellow-50 p-3 rounded-lg text-yellow-800 text-sm"></div>
         </section>
 
@@ -233,7 +232,7 @@
             }
         }
 
-        // 渲染表格
+        // 渲染表格 - 关键修复：正确显示北京时间
         function renderTable(records) {
             if (records.length === 0) {
                 dataTableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">没有数据</td></tr>';
@@ -241,11 +240,21 @@
             }
             
             dataTableBody.innerHTML = records.map(record => {
-                const localTime = record.start_time ? new Date(record.start_time).toLocaleString() : '-';
+                // 后端已返回转换好的北京时间，直接格式化显示
+                const beijingTime = record.start_time ? new Date(record.start_time).toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                }) : '-';
+                
                 return `
                 <tr>
                     <td class="px-6 py-4 whitespace-nowrap">${record.plan_id || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${localTime}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${beijingTime}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.customer || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.satellite || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.task_result || '-'}</td>
@@ -262,7 +271,7 @@
             }).join('');
         }
 
-        // 处理文件上传 - 增加数据验证
+        // 处理文件上传
         async function handleFileUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -282,7 +291,7 @@
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                         let jsonData = XLSX.utils.sheet_to_json(firstSheet);
                         
-                        // 【新增】数据验证和清洗
+                        // 数据验证和清洗
                         const { validRecords, invalidRecords } = validateAndCleanData(jsonData);
                         
                         // 显示验证结果
@@ -334,7 +343,7 @@
             }
         }
 
-        // 【新增】数据验证和清洗函数
+        // 数据验证和清洗函数
         function validateAndCleanData(records) {
             const validRecords = [];
             const invalidRecords = [];
@@ -382,7 +391,7 @@
             return { validRecords, invalidRecords };
         }
 
-        // 【新增】显示数据验证错误
+        // 显示数据验证错误
         function showValidationErrors(errors) {
             validationErrors.innerHTML = `
                 <div class="font-medium mb-1"><i class="fa fa-exclamation-triangle mr-1"></i>数据验证警告：</div>
@@ -430,9 +439,11 @@
                 document.getElementById('editId').value = data.id;
                 document.getElementById('editPlanId').value = data.plan_id || '';
                 
+                // 处理时间显示 - 转换为datetime-local格式（北京时间）
                 if (data.start_time) {
-                    const localDate = new Date(data.start_time);
-                    const dateTimeLocal = localDate.toISOString().slice(0, 16);
+                    const date = new Date(data.start_time);
+                    // 转换为本地时间的ISO格式（不含时区信息，因为datetime-local控件使用本地时间）
+                    const dateTimeLocal = date.toISOString().slice(0, 16);
                     document.getElementById('editStartTime').value = dateTimeLocal;
                 } else {
                     document.getElementById('editStartTime').value = '';
