@@ -1,5 +1,5 @@
-import { Pool } from 'pg';
-import { verifyAuth } from '../lib/auth';
+const { Pool } = require('pg');
+const { verifyAuth } = require('../lib/auth');
 
 let pool;
 if (!global._pgPool) {
@@ -9,7 +9,7 @@ if (!global._pgPool) {
   pool = global._pgPool;
 }
 
-// 处理日期格式转换
+// 直接在当前文件中实现日期解析功能，无需额外模块
 function parseDate(dateString) {
   if (!dateString) return null;
   
@@ -18,7 +18,7 @@ function parseDate(dateString) {
   return isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // 只允许POST方法
   if (req.method !== 'POST') {
     return res.status(405).json({ error: '方法不允许，仅支持POST' });
@@ -50,10 +50,10 @@ export default async function handler(req, res) {
         const dbRecord = {
           plan_id: record['计划ID'] || record.plan_id || null,
           start_time: parseDate(record['开始时间'] || record.start_time),
-          customer: record['所属客户'] || record.customer || null,
-          satellite: record['卫星名称'] || record.satellite || null,
-          station: record['测站名称'] || record.station || null,
-          task_result: record['任务结果状态'] || record.task_result || null,
+          customer: record['客户'] || record.customer || null,
+          satellite: record['卫星'] || record.satellite || null,
+          station: record['测站'] || record.station || null,
+          task_result: record['任务结果'] || record.task_result || null,
           task_type: record['任务类型'] || record.task_type || null,
           raw: record // 保存原始数据
         };
@@ -102,4 +102,4 @@ export default async function handler(req, res) {
     console.error('导入数据错误:', error);
     res.status(500).json({ error: '服务器错误，导入失败' });
   }
-}
+};
