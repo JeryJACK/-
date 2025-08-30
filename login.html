@@ -44,12 +44,6 @@
             <i class="fa fa-exclamation-circle mr-1"></i>
             <span></span>
         </div>
-        
-        <!-- 调试信息区域 -->
-        <div id="debugInfo" class="mt-4 text-xs text-gray-500 hidden">
-            <p>调试信息:</p>
-            <pre id="debugContent"></pre>
-        </div>
     </div>
 
     <script>
@@ -66,48 +60,47 @@
 
     <script>
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
-    const errorMsg = document.getElementById('errorMessage');
-    
-    // 清除之前的错误消息
-    errorMsg.classList.add('hidden');
-    
-    try {
-        const response = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorMsg = document.getElementById('errorMessage');
+            const submitBtn = e.submitter;
+            
+            // 显示加载状态
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i> 登录中...';
+            errorMsg.classList.add('hidden');
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                    timeout: 10000
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 登录成功，保存token并重定向到管理页面
+                    localStorage.setItem('token', data.token);
+                    window.location.href = '/admin.html';
+                } else {
+                    errorMsg.querySelector('span').textContent = data.error || '登录失败，请检查用户名和密码';
+                    errorMsg.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('登录请求错误:', error);
+                errorMsg.querySelector('span').textContent = '网络错误，无法连接到服务器';
+                errorMsg.classList.remove('hidden');
+            } finally {
+                // 恢复按钮状态
+                submitBtn.disabled = false;
+                submitBtn.textContent = '登录';
+            }
         });
-        
-        // 无论响应状态如何，先尝试解析JSON
-        let data;
-       try {
-    data = await response.json();
-} catch (jsonError) {
-    // 获取服务器返回的原始文本（前200字符）
-    const rawText = await response.text();
-    throw new Error(`服务器响应格式错误 (状态码: ${response.status})，内容: ${rawText.slice(0, 200)}`);
-}
-        
-        if (response.ok && data.success) {
-            // 登录成功，保存token并重定向
-            localStorage.setItem('token', data.token);
-            // 记录登录时间，用于后续检查过期
-            localStorage.setItem('tokenExpiry', Date.now() + 86400000); // 24小时后过期
-            window.location.href = '/admin.html';
-        } else {
-            errorMsg.querySelector('span').textContent = data.error || '登录失败，请检查用户名和密码';
-            errorMsg.classList.remove('hidden');
-        }
-    } catch (error) {
-        errorMsg.querySelector('span').textContent = '登录出错: ' + error.message;
-        errorMsg.classList.remove('hidden');
-    }
-});
     </script>
 </body>
 </html>
-
+    
