@@ -28,11 +28,10 @@
             <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary cursor-pointer transition-colors" id="dropArea">
                 <i class="fa fa-file-excel-o text-4xl text-gray-400 mb-3"></i>
                 <p class="mb-2">拖放Excel文件到此处，或<span class="text-primary font-medium">点击上传</span></p>
-                <p class="text-sm text-gray-500">支持 .xlsx 格式文件，时间将按北京时间解析</p>
+                <p class="text-sm text-gray-500">支持 .xlsx 格式文件</p>
                 <input type="file" id="fileInput" accept=".xlsx" class="hidden">
             </div>
             <div id="importStatus" class="mt-4 hidden"></div>
-            <div id="validationErrors" class="mt-4 hidden bg-yellow-50 p-3 rounded-lg text-yellow-800 text-sm"></div>
         </section>
 
         <!-- 数据列表 -->
@@ -49,7 +48,7 @@
                     <thead>
                         <tr>
                             <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">计划ID</th>
-                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">开始时间（北京时间）</th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">开始时间</th>
                             <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">客户</th>
                             <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">卫星</th>
                             <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任务结果</th>
@@ -57,6 +56,7 @@
                         </tr>
                     </thead>
                     <tbody id="dataTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- 数据将通过JS动态加载 -->
                         <tr>
                             <td colspan="6" class="px-6 py-10 text-center text-gray-500">加载数据中...</td>
                         </tr>
@@ -80,13 +80,14 @@
             <h3 class="text-lg font-semibold mb-4">编辑数据</h3>
             <form id="editForm">
                 <input type="hidden" id="editId">
+                <!-- 表单字段将通过JS动态生成 -->
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">计划ID</label>
                         <input type="text" id="editPlanId" class="w-full p-2 border border-gray-300 rounded-md">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">开始时间（北京时间）</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">开始时间</label>
                         <input type="datetime-local" id="editStartTime" class="w-full p-2 border border-gray-300 rounded-md">
                     </div>
                     <div>
@@ -142,7 +143,6 @@
         const dropArea = document.getElementById('dropArea');
         const fileInput = document.getElementById('fileInput');
         const importStatus = document.getElementById('importStatus');
-        const validationErrors = document.getElementById('validationErrors');
         const dataTableBody = document.getElementById('dataTableBody');
         const totalCountEl = document.getElementById('totalCount');
         const prevPageBtn = document.getElementById('prevPage');
@@ -155,44 +155,50 @@
 
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
-            // 显示当前时区用于调试
-            console.log('前端时区:', Intl.DateTimeFormat().resolvedOptions().timeZone);
             loadData();
             setupEventListeners();
         });
 
         // 设置事件监听
         function setupEventListeners() {
-            // 文件上传相关
+            // 文件上传
             dropArea.addEventListener('click', () => fileInput.click());
             fileInput.addEventListener('change', handleFileUpload);
+            
+            // 拖放事件
             dropArea.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 dropArea.classList.add('border-primary');
             });
+            
             dropArea.addEventListener('dragleave', () => {
                 dropArea.classList.remove('border-primary');
             });
+            
             dropArea.addEventListener('drop', (e) => {
                 e.preventDefault();
                 dropArea.classList.remove('border-primary');
+                
                 if (e.dataTransfer.files.length) {
                     fileInput.files = e.dataTransfer.files;
                     handleFileUpload(e);
                 }
             });
             
-            // 分页和刷新
+            // 分页按钮
             prevPageBtn.addEventListener('click', () => {
                 if (currentPage > 1) {
                     currentPage--;
                     loadData();
                 }
             });
+            
             nextPageBtn.addEventListener('click', () => {
                 currentPage++;
                 loadData();
             });
+            
+            // 刷新按钮
             refreshBtn.addEventListener('click', loadData);
             
             // 退出登录
@@ -201,10 +207,11 @@
                 window.location.href = '/login.html';
             });
             
-            // 编辑模态框
+            // 编辑表单
             cancelEditBtn.addEventListener('click', () => {
                 editModal.classList.add('hidden');
             });
+            
             editForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 await saveEditedData();
@@ -225,15 +232,10 @@
                     return;
                 }
                 
-                // 调试用：显示原始时间数据
-                console.log('后端返回的时间数据:', data.records.map(r => ({
-                    id: r.id,
-                    displayed: r.start_time,
-                    original: r.original_utc_time
-                })));
-                
                 renderTable(data.records);
                 totalCountEl.textContent = data.total;
+                
+                // 更新分页按钮状态
                 prevPageBtn.disabled = currentPage === 1;
                 nextPageBtn.disabled = currentPage * pageSize >= data.total;
             } catch (error) {
@@ -241,33 +243,17 @@
             }
         }
 
-        // 渲染表格 - 关键修复：直接使用后端返回的北京时间，不做额外转换
+        // 渲染表格
         function renderTable(records) {
             if (records.length === 0) {
                 dataTableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">没有数据</td></tr>';
                 return;
             }
             
-            dataTableBody.innerHTML = records.map(record => {
-                // 后端已返回正确的北京时间字符串，直接格式化显示
-                // 不使用new Date()进行二次转换，避免时区问题
-                const beijingTimeStr = record.start_time;
-                let formattedTime = '-';
-                
-                if (beijingTimeStr) {
-                    // 直接解析字符串中的日期时间部分
-                    const dateTimeParts = beijingTimeStr.split(' ');
-                    if (dateTimeParts.length === 2) {
-                        formattedTime = `${dateTimeParts[0]} ${dateTimeParts[1]}`;
-                    } else {
-                        formattedTime = beijingTimeStr;
-                    }
-                }
-                
-                return `
+            dataTableBody.innerHTML = records.map(record => `
                 <tr>
                     <td class="px-6 py-4 whitespace-nowrap">${record.plan_id || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${formattedTime}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${record.start_time ? new Date(record.start_time).toLocaleString() : '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.customer || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.satellite || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">${record.task_result || '-'}</td>
@@ -280,18 +266,13 @@
                         </button>
                     </td>
                 </tr>
-                `;
-            }).join('');
+            `).join('');
         }
 
         // 处理文件上传
         async function handleFileUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
-            
-            // 重置状态区域
-            importStatus.classList.add('hidden');
-            validationErrors.classList.add('hidden');
             
             showStatus('正在解析文件...');
             
@@ -302,47 +283,25 @@
                         const data = new Uint8Array(e.target.result);
                         const workbook = XLSX.read(data, { type: 'array' });
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        let jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
                         
-                        // 数据验证和清洗
-                        const { validRecords, invalidRecords } = validateAndCleanData(jsonData);
+                        showStatus(`解析完成，共 ${jsonData.length} 条记录，正在上传...`);
                         
-                        // 显示验证结果
-                        if (invalidRecords.length > 0) {
-                            showValidationErrors(invalidRecords);
-                        }
-                        
-                        if (validRecords.length === 0) {
-                            showStatus('没有有效的记录可导入', 'error');
-                            return;
-                        }
-                        
-                        showStatus(`解析完成，有效记录: ${validRecords.length} 条，无效记录: ${invalidRecords.length} 条，正在上传...`);
-                        
-                        // 上传有效数据到服务器
+                        // 上传数据到服务器
                         const response = await fetch('/api/import', {
                             method: 'POST',
                             headers: { 
                                 'Content-Type': 'application/json',
                                 'Authorization': `Bearer ${localStorage.getItem('token')}`
                             },
-                            body: JSON.stringify({ records: validRecords })
+                            body: JSON.stringify({ records: jsonData })
                         });
                         
                         const result = await response.json();
                         
                         if (result.success) {
-                            showStatus(`上传成功，导入 ${result.inserted} 条记录，共 ${result.total} 条`, 'success');
-                            loadData();
-                            
-                            if (result.errors.length > 0) {
-                                setTimeout(() => {
-                                    const errorDetails = result.errors.map(err => 
-                                        `第 ${err.index + 1} 条: ${err.error} (原始值: ${err.originalTimeValue})`
-                                    ).join('\n');
-                                    alert(`部分记录导入失败:\n${errorDetails}`);
-                                }, 1000);
-                            }
+                            showStatus(`上传成功，导入 ${result.inserted} 条记录`, 'success');
+                            loadData(); // 刷新数据列表
                         } else {
                             showStatus(`上传失败: ${result.error}`, 'error');
                         }
@@ -354,69 +313,6 @@
             } catch (error) {
                 showStatus('上传失败: ' + error.message, 'error');
             }
-        }
-
-        // 数据验证和清洗函数
-        function validateAndCleanData(records) {
-            const validRecords = [];
-            const invalidRecords = [];
-            
-            records.forEach((record, index) => {
-                // 检查记录是否为有效对象
-                if (typeof record !== 'object' || record === null || Array.isArray(record)) {
-                    invalidRecords.push({
-                        index,
-                        reason: '记录不是有效的对象',
-                        value: record
-                    });
-                    return;
-                }
-                
-                // 检查是否包含时间相关字段
-                const hasTimeField = record['开始时间'] !== undefined || 
-                                   record.start_time !== undefined ||
-                                   record['StartTime'] !== undefined;
-                                   
-                if (!hasTimeField) {
-                    invalidRecords.push({
-                        index,
-                        reason: '记录不包含时间字段（开始时间/start_time/StartTime）',
-                        value: JSON.stringify(record)
-                    });
-                    return;
-                }
-                
-                // 验证时间字段格式是否可能被解析
-                const timeValue = record['开始时间'] || record.start_time || record['StartTime'];
-                if (timeValue === null || timeValue === undefined || timeValue === '') {
-                    invalidRecords.push({
-                        index,
-                        reason: '时间字段为空',
-                        value: JSON.stringify(record)
-                    });
-                    return;
-                }
-                
-                // 如果通过验证，添加到有效记录
-                validRecords.push(record);
-            });
-            
-            return { validRecords, invalidRecords };
-        }
-
-        // 显示数据验证错误
-        function showValidationErrors(errors) {
-            validationErrors.innerHTML = `
-                <div class="font-medium mb-1"><i class="fa fa-exclamation-triangle mr-1"></i>数据验证警告：</div>
-                <ul class="list-disc pl-5 text-sm space-y-1">
-                    ${errors.slice(0, 5).map(err => `
-                        <li>第 ${err.index + 1} 条: ${err.reason}</li>
-                    `).join('')}
-                    ${errors.length > 5 ? `<li>... 还有 ${errors.length - 5} 条错误</li>` : ''}
-                </ul>
-                <div class="mt-2 text-xs">仅上传有效记录，无效记录将被忽略</div>
-            `;
-            validationErrors.classList.remove('hidden');
         }
 
         // 显示状态消息
@@ -449,24 +345,16 @@
                     return;
                 }
                 
+                // 填充表单
                 document.getElementById('editId').value = data.id;
                 document.getElementById('editPlanId').value = data.plan_id || '';
-                
-                // 处理时间显示 - 转换为datetime-local格式（北京时间）
-                if (data.start_time) {
-                    // 将后端返回的北京时间转换为ISO格式
-                    const date = new Date(data.start_time);
-                    const dateTimeLocal = date.toISOString().slice(0, 16);
-                    document.getElementById('editStartTime').value = dateTimeLocal;
-                } else {
-                    document.getElementById('editStartTime').value = '';
-                }
-                
+                document.getElementById('editStartTime').value = data.start_time ? new Date(data.start_time).toISOString().slice(0, 16) : '';
                 document.getElementById('editCustomer').value = data.customer || '';
                 document.getElementById('editSatellite').value = data.satellite || '';
                 document.getElementById('editStation').value = data.station || '';
                 document.getElementById('editTaskResult').value = data.task_result || '';
                 
+                // 显示模态框
                 editModal.classList.remove('hidden');
             } catch (error) {
                 alert('加载数据失败: ' + error.message);
@@ -499,7 +387,7 @@
                 
                 if (result.success) {
                     editModal.classList.add('hidden');
-                    loadData();
+                    loadData(); // 刷新数据列表
                 } else {
                     alert(`保存失败: ${result.error}`);
                 }
@@ -521,7 +409,7 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    loadData();
+                    loadData(); // 刷新数据列表
                 } else {
                     alert(`删除失败: ${result.error}`);
                 }
@@ -532,4 +420,3 @@
     </script>
 </body>
 </html>
-    
