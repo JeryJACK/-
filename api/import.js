@@ -129,7 +129,7 @@ export default async function handler(req, res) {
         
         const dbTime = formatBeijingTimeForDB(beijingTime);
         
-        // 移除对start_time_raw字段的引用
+        // 完全移除start_time_raw字段的引用
         await pool.query(
           `INSERT INTO raw_records 
            (plan_id, start_time, customer, satellite, station, 
@@ -138,10 +138,10 @@ export default async function handler(req, res) {
           [
             record['计划ID'] || record.plan_id || null,
             dbTime,  // 存储为北京时间
-            record['所属客户'] || record.customer || null,
-            record['卫星名称'] || record.satellite || null,
-            record['测站名称'] || record.station || null,
-            record['任务结果状态'] || record.task_result || null,
+            record['客户'] || record.customer || null,
+            record['卫星'] || record.satellite || null,
+            record['测站'] || record.station || null,
+            record['任务结果'] || record.task_result || null,
             record['任务类型'] || record.task_type || null,
             JSON.stringify(record)  // 存储原始数据
           ]
@@ -152,8 +152,7 @@ export default async function handler(req, res) {
         errors.push({
           index: i,
           error: error.message,
-          originalTimeValue: timeValue !== undefined ? String(timeValue) : '未获取到时间值',
-          recordType: typeof record
+          originalTimeValue: timeValue !== undefined ? String(timeValue) : '未获取到时间值'
         });
         console.error(`处理第 ${i+1} 条记录失败:`, error);
       }
