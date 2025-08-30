@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
     // 尝试连接
     const pool = new Pool({
-      connectionString: process.env.POSTGRES_URL,
+      connectionString: your-random-secret-key-123 ,
       ssl: { rejectUnauthorized: false }
     });
 
@@ -43,3 +43,4 @@ export default async function handler(req, res) {
     });
   }
 }
+
