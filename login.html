@@ -84,11 +84,13 @@
         
         // 无论响应状态如何，先尝试解析JSON
         let data;
-        try {
-            data = await response.json();
-        } catch (jsonError) {
-            throw new Error('服务器响应格式错误');
-        }
+       try {
+    data = await response.json();
+} catch (jsonError) {
+    // 获取服务器返回的原始文本（前200字符）
+    const rawText = await response.text();
+    throw new Error(`服务器响应格式错误 (状态码: ${response.status})，内容: ${rawText.slice(0, 200)}`);
+}
         
         if (response.ok && data.success) {
             // 登录成功，保存token并重定向
@@ -108,3 +110,4 @@
     </script>
 </body>
 </html>
+
