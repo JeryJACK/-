@@ -417,6 +417,57 @@
                 alert('删除失败: ' + error.message);
             }
         };
+        <!-- 在script标签中添加或修改这个函数 -->
+function showError(message) {
+    // 确保错误信息是字符串
+    const errorText = typeof message === 'object' 
+        ? JSON.stringify(message, null, 2) 
+        : message;
+        
+    // 创建错误提示元素
+    const errorEl = document.createElement('div');
+    errorEl.className = 'fixed top-4 right-4 bg-danger/10 text-danger p-4 rounded-md shadow-md z-50 max-w-xs';
+    errorEl.innerHTML = `
+        <div class="flex items-start">
+            <i class="fa fa-exclamation-circle mt-1 mr-2"></i>
+            <div>
+                <h4 class="font-medium mb-1">错误</h4>
+                <p class="text-sm whitespace-pre-wrap">${errorText}</p>
+                <button onclick="this.parentElement.parentElement.remove()" class="mt-2 text-xs text-danger hover:underline">关闭</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(errorEl);
+    
+    // 5秒后自动关闭
+    setTimeout(() => {
+        errorEl.remove();
+    }, 5000);
+}
+
+// 同时更新fetchDataFromAPI函数中的错误处理
+async function fetchDataFromAPI(params = {}) {
+    try {
+        const qs = new URLSearchParams(params).toString();
+        const response = await fetch(`/api/records?${qs}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || '获取数据失败');
+        }
+        
+        return data;
+    } catch (error) {
+        console.error('获取数据失败:', error);
+        showError(error.message);
+        return { records: [], total: 0 };
+    }
+}
     </script>
 </body>
+
 </html>
