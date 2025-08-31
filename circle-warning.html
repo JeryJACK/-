@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圈次数据预警模块 - 卫星任务数据分析平台</title>
+    <!-- 外部资源 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#36CFC9',
+                        accent: '#722ED1',
+                        warning: '#FF7D00',
+                        danger: '#F53F3F',
+                        success: '#00B42A',
+                    },
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .card-shadow {
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            .modal-backdrop {
+                backdrop-filter: blur(2px);
+            }
+            .filter-select {
+                @apply w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all;
+            }
+            .table-hover-row {
+                @apply hover:bg-gray-50 transition-colors;
+            }
+            .increase-indicator {
+                @apply text-success flex items-center;
+            }
+            .decrease-indicator {
+                @apply text-danger flex items-center;
+            }
+            .warning-card {
+                @apply bg-white rounded-lg p-6 card-shadow mb-6 transition-all hover:shadow-lg;
+            }
+            .filter-active {
+                @apply bg-primary text-white;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 顶部导航 -->
+    <header class="bg-white border-b border-gray-200">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-exclamation-triangle text-warning text-2xl"></i>
+                <h1 class="text-xl font-bold text-primary">卫星任务数据分析平台</h1>
+            </div>
+
+            <nav class="hidden md:flex items-center space-x-6">
+                <a href="index.html" class="text-gray-600 hover:text-primary transition-colors px-1 py-5">首页</a>
+                <a href="trend-analysis.html" class="text-gray-600 hover:text-primary transition-colors px-1 py-5">数据趋势分析</a>
+                <a href="data-distribution.html" class="block py-3 text-primary font-medium">数据分布</a>
+                <a href="circle-warning.html" class="text-primary font-medium border-b-2 border-primary px-1 py-5">圈次数据预警模块</a>
+            </nav>
+
+            <button class="md:hidden text-gray-600 hover:text-primary" id="mobileMenuBtn">
+                <i class="fa fa-bars text-xl"></i>
+            </button>
+        </div>
+
+        <div class="md:hidden hidden bg-white border-t border-gray-200" id="mobileMenu">
+            <div class="container mx-auto px-4 py-2">
+                <a href="index.html" class="block py-3 text-gray-600 hover:text-primary">首页</a>
+                <a href="trend-analysis.html" class="block py-3 text-gray-600 hover:text-primary">数据趋势分析</a>
+                <a href="data-distribution.html" class="block py-3 text-primary font-medium">数据分布</a>
+                <a href="circle-warning.html" class="block py-3 text-primary font-medium">圈次数据预警</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6">
+        <h2 class="text-xl font-bold mb-6 text-gray-800">圈次数据预警模块</h2>
+
+        <!-- 数据状态提示区 -->
+        <div id="dbLoading" class="mb-6 p-3 bg-primary/10 text-primary rounded-lg flex items-center hidden">
+            <i class="fa fa-spinner fa-spin mr-2"></i>
+            <span>正在从数据库加载数据...</span>
+            <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                <div id="loadingProgress" class="bg-primary h-1.5 rounded-full" style="width: 0%"></div>
+            </div>
+            <div class="text-xs text-gray-500 mt-1">
+                <span id="loadingStatus">准备加载...</span>
+            </div>
+        </div>
+
+        <div id="noDataAlert" class="bg-warning/10 text-warning p-4 rounded-lg mb-6 hidden">
+            <i class="fa fa-exclamation-circle mr-2"></i>
+            <span>请先在首页导入数据，然后再进行圈次预警分析</span>
+        </div>
+
+        <div id="dataStructureAlert" class="bg-warning/10 text-warning p-4 rounded-lg mb-6 hidden">
+            <i class="fa fa-exclamation-circle mr-2"></i>
+            <span>数据结构识别异常</span>
+            <div class="mt-2 text-sm">
+                <p id="structureMsg">系统检测到数据格式可能不符合预期，已尝试自动修复。</p>
+                <div id="structureDetails" class="mt-1 bg-white p-2 rounded text-xs"></div>
+            </div>
+        </div>
+
+        <div id="dbErrorAlert" class="bg-danger/10 text-danger p-4 rounded-lg mb-6 hidden">
+            <i class="fa fa-exclamation-circle mr-2"></i>
+            <span id="dbErrorMsg">数据库操作出错</span>
+            <div id="dbErrorDetails" class="mt-2 text-sm hidden">
+                <p>错误详情:</p>
+                <pre class="bg-white p-2 rounded text-xs"></pre>
+            </div>
+            <button id="fixDbBtn" class="mt-2 text-sm bg-primary text-white px-3 py-1 rounded hover:bg-primary/90 transition-colors hidden">
+                尝试修复数据库
+            </button>
+        </div>
+
+        <!-- 筛选条件和预警设置区域 -->
+        <section id="settingsSection" class="mb-8 bg-white rounded-lg p-6 card-shadow hidden">
+            <h3 class="text-lg font-semibold mb-6">预警设置</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <!-- 时间范围和周期设置 -->
+                <div class="md:col-span-2 space-y-6">
+                    <h4 class="font-medium text-gray-700 mb-3">时间范围设置</h4>
+
+                    <!-- 基期设置 -->
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <h5 class="font-medium text-gray-700 mb-3 flex items-center">
+                            <i class="fa fa-calendar-check-o text-primary mr-2"></i>基期（对比基准时间段）
+                        </h5>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">开始时间</label>
+                                <input type="datetime-local" id="basePeriodStart" class="filter-select">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">结束时间</label>
+                                <input type="datetime-local" id="basePeriodEnd" class="filter-select">
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">默认：前一日早8点 至 前前一日早8点</p>
+                    </div>
+
+                    <!-- 现期设置 -->
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <h5 class="font-medium text-gray-700 mb-3 flex items-center">
+                            <i class="fa fa-calendar text-primary mr-2"></i>现期（当前分析时间段）
+                        </h5>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">开始时间</label>
+                                <input type="datetime-local" id="currentPeriodStart" class="filter-select">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">结束时间</label>
+                                <input type="datetime-local" id="currentPeriodEnd" class="filter-select">
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">默认：当日早8点 至 前一日早8点</p>
+                    </div>
+                </div>
+
+                <!-- 波动阈值设置 -->
+                <div class="space-y-4">
+                    <h4 class="font-medium text-gray-700 mb-2">趋势波动预警阈值</h4>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                波动幅度阈值: <span id="thresholdValue">20</span>%
+                            </label>
+                            <input type="range" id="fluctuationThreshold" min="0" max="100" value="20"
+                                   class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                            <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                <span>0%</span>
+                                <span>50%</span>
+                                <span>100%</span>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded-lg text-sm text-gray-600 mt-6">
+                            <p class="font-medium mb-1">波动计算公式:</p>
+                            <p class="flex items-center justify-center py-2">
+                                <span>波动幅度 = (现期值 - 基期值) / 基期值 × 100%</span>
+                            </p>
+                        </div>
+
+                        <div class="pt-2">
+                            <button id="calculateWarning" class="w-full px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors">
+                                <i class="fa fa-calculator mr-1"></i> 计算预警数据
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                <h4 class="font-medium text-gray-700 mb-2 flex items-center">
+                    <i class="fa fa-info-circle text-primary mr-2"></i> 预警说明
+                </h4>
+                <ul class="text-sm text-gray-600 space-y-1 list-disc pl-5">
+                    <li>系统将分别计算基期和现期的圈次数据</li>
+                    <li>根据设置的波动幅度阈值，自动识别异常波动项</li>
+                    <li>上涨超过阈值的项将标记为<span class="text-success font-medium">增长异常</span></li>
+                    <li>下降超过阈值的项将标记为<span class="text-danger font-medium">下降异常</span></li>
+                    <li>时间基于北京时间（取自您的计算机系统时间）</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- 计算结果和预警展示区域 -->
+        <section id="resultsSection" class="space-y-8 hidden">
+            <!-- 预警概览 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div class="warning-card border-l-4 border-success">
+                    <h4 class="font-medium text-gray-800 mb-1">增长异常项</h4>
+                    <div class="flex items-end">
+                        <span id="increaseCount" class="text-2xl font-bold text-success">0</span>
+                        <span class="text-gray-500 ml-2 mb-1">项</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">较基期增长超过设定阈值</p>
+                </div>
+
+                <div class="warning-card border-l-4 border-danger">
+                    <h4 class="font-medium text-gray-800 mb-1">下降异常项</h4>
+                    <div class="flex items-end">
+                        <span id="decreaseCount" class="text-2xl font-bold text-danger">0</span>
+                        <span class="text-gray-500 ml-2 mb-1">项</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">较基期下降超过设定阈值</p>
+                </div>
+
+                <div class="warning-card border-l-4 border-primary">
+                    <h4 class="font-medium text-gray-800 mb-1">分析周期</h4>
+                    <div class="flex flex-col">
+                        <span id="periodInfo" class="text-sm font-medium text-gray-600">
+                            基期: <span id="basePeriodDisplay">-</span>
+                        </span>
+                        <span id="currentPeriodInfo" class="text-sm font-medium text-gray-600 mt-1">
+                            现期: <span id="currentPeriodDisplay">-</span>
+                        </span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">基于北京时间</p>
+                </div>
+            </div>
+
+            <!-- 测站预警表格 -->
+            <div class="bg-white rounded-lg p-6 card-shadow">
+                <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                    <h3 class="text-lg font-semibold">测站名称波动预警</h3>
+                    <div class="flex items-center gap-2">
+                        <div class="flex border rounded-md overflow-hidden">
+                            <button class="status-filter px-3 py-1 text-sm" data-status="all" data-target="station">
+                                全部
+                            </button>
+                            <button class="status-filter px-3 py-1 text-sm filter-active" data-status="increase" data-target="station">
+                                <i class="fa fa-arrow-up text-success mr-1"></i>上涨异常
+                            </button>
+                            <button class="status-filter px-3 py-1 text-sm filter-active" data-status="decrease" data-target="station">
+                                <i class="fa fa-arrow-down text-danger mr-1"></i>下降异常
+                            </button>
+                            <button class="status-filter px-3 py-1 text-sm" data-status="normal" data-target="station">
+                                <i class="fa fa-check text-gray-500 mr-1"></i>正常
+                            </button>
+                        </div>
+                        <button id="downloadStationData" class="text-primary hover:text-primary/80 text-sm flex items-center transition-colors">
+                            <i class="fa fa-download mr-1"></i> 下载数据
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    测站名称
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    基期圈次
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    现期圈次
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    波动幅度
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    预警状态
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="stationWarningTable" class="bg-white divide-y divide-gray-200">
+                            <!-- 表格内容将通过JS动态生成 -->
+                            <tr>
+                                <td colspan="5" class="px-6 py-10 text-center text-gray-500">
+                                    请点击"计算预警数据"按钮生成结果
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 客户预警表格 -->
+            <div class="bg-white rounded-lg p-6 card-shadow">
+                <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                    <h3 class="text-lg font-semibold">客户名称波动预警</h3>
+                    <div class="flex items-center gap-2">
+                        <div class="flex border rounded-md overflow-hidden">
+                            <button class="status-filter px-3 py-1 text-sm" data-status="all" data-target="customer">
+                                全部
+                            </button>
+                            <button class="status-filter px-3 py-1 text-sm filter-active" data-status="increase" data-target="customer">
+                                <i class="fa fa-arrow-up text-success mr-1"></i>上涨异常
+                            </button>
+                            <button class="status-filter px-3 py-1 text-sm filter-active" data-status="decrease" data-target="customer">
+                                <i class="fa fa-arrow-down text-danger mr-1"></i>下降异常
+                            </button>
+                            <button class="status-filter px-3 py-1 text-sm" data-status="normal" data-target="customer">
+                                <i class="fa fa-check text-gray-500 mr-1"></i>正常
+                            </button>
+                        </div>
+                        <button id="downloadCustomerData" class="text-primary hover:text-primary/80 text-sm flex items-center transition-colors">
+                            <i class="fa fa-download mr-1"></i> 下载数据
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    客户名称
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    基期圈次
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    现期圈次
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    波动幅度
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    预警状态
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="customerWarningTable" class="bg-white divide-y divide-gray-200">
+                            <!-- 表格内容将通过JS动态生成 -->
+                            <tr>
+                                <td colspan="5" class="px-6 py-10 text-center text-gray-500">
+                                    请点击"计算预警数据"按钮生成结果
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 卫星预警表格 -->
+            <div class="bg-white rounded-lg p-6 card-shadow">
+                <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                    <h3 class="text-lg font-semibold">卫星名称波动预警</h3>
+                    <div class="flex items-center gap-2">
+                        <div class="flex border rounded-md overflow-hidden">
+                            <button class="status-filter px-3 py-1 text-sm" data-status="all" data-target="satellite">
+                                全部
+                            </button>
+                            <button class="status-filter px-3 py-1 text-sm filter-active" data-status="increase" data-target="satellite">
+                                <i class="fa fa-arrow-up text-success mr-1"></i>上涨异常
+                            </button>
+                            <button class="status-filter px-3 py-1 text-sm filter-active" data-status="decrease" data-target="satellite">
+                                <i class="fa fa-arrow-down text-danger mr-1"></i>下降异常
+                            </button>
+                            <button class="status-filter px-3 py-1 text-sm" data-status="normal" data-target="satellite">
+                                <i class="fa fa-check text-gray-500 mr-1"></i>正常
+                            </button>
+                        </div>
+                        <button id="downloadSatelliteData" class="text-primary hover:text-primary/80 text-sm flex items-center transition-colors">
+                            <i class="fa fa-download mr-1"></i> 下载数据
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    卫星名称
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    基期圈次
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    现期圈次
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    波动幅度
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    预警状态
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="satelliteWarningTable" class="bg-white divide-y divide-gray-200">
+                            <!-- 表格内容将通过JS动态生成 -->
+                            <tr>
+                                <td colspan="5" class="px-6 py-10 text-center text-gray-500">
+                                    请点击"计算预警数据"按钮生成结果
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // 字段映射配置
+        const FIELD_MAPPING = {
+            '客户名称': '所属客户',
+            '卫星名称': '卫星名称',
+            '测站名称': '测站名称',
+            '任务结果状态': '任务结果状态',
+            '任务类型': '任务类型',
+            '开始时间': '开始时间'
+        };
+
+        // IndexedDB工具类
+        class SatelliteDB {
+            constructor() {
+                this.dbName = 'SatelliteDataDB';
+                this.storeName = 'satelliteData';
+                this.db = null;
+                this.initialized = false;
+                this.initPromise = null;
+                this.TIMEOUT_DURATION = 15000;
+                this.requiredIndex = 'byTimestamp';
+            }
+
+            async init() {
+                if (this.initialized) return Promise.resolve(this.db);
+                if (this.initPromise) return this.initPromise;
+
+                this.initPromise = Promise.race([
+                    new Promise((resolve, reject) => {
+                        const request = indexedDB.open(this.dbName, 3);
+
+                        request.onupgradeneeded = (event) => {
+                            this.db = event.target.result;
+                            if (!this.db.objectStoreNames.contains(this.storeName)) {
+                                const store = this.db.createObjectStore(this.storeName, { keyPath: 'id' });
+                                store.createIndex(this.requiredIndex, 'timestamp', { unique: false });
+                            }
+                        };
+
+                        request.onsuccess = (event) => {
+                            this.db = event.target.result;
+                            this.initialized = true;
+                            resolve(this.db);
+                        };
+
+                        request.onerror = (event) => {
+                            this.initialized = false;
+                            reject(event.target.error);
+                        };
+                    }),
+                    new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('数据库连接超时')), this.TIMEOUT_DURATION);
+                    })
+                ]);
+
+                return this.initPromise;
+            }
+
+            async ensureInitialized() {
+                if (!this.initialized) await this.init();
+                return this.db;
+            }
+
+            async getAllDataWithProgress(progressCallback) {
+                await this.ensureInitialized();
+                const transaction = this.db.transaction([this.storeName], 'readonly');
+                const store = transaction.objectStore(this.storeName);
+                const cursorRequest = store.openCursor(null, 'prev');
+
+                return new Promise((resolve, reject) => {
+                    const results = [];
+                    let count = 0;
+
+                    cursorRequest.onsuccess = (event) => {
+                        const cursor = event.target.result;
+                        if (cursor) {
+                            results.push(cursor.value);
+                            count++;
+                            if (progressCallback) progressCallback(Math.min(100, count * 10), count, count);
+                            cursor.continue();
+                        } else {
+                            resolve(results);
+                        }
+                    };
+
+                    cursorRequest.onerror = (event) => reject(event.target.error);
+                });
+            }
+
+            async hasData() {
+                const count = await this.getTotalCount();
+                return count > 0;
+            }
+
+            async getTotalCount() {
+                await this.ensureInitialized();
+                const transaction = this.db.transaction([this.storeName], 'readonly');
+                const store = transaction.objectStore(this.storeName);
+                return new Promise((resolve) => {
+                    const countRequest = store.count();
+                    countRequest.onsuccess = () => resolve(countRequest.result);
+                });
+            }
+
+            async clearData() {
+                await this.ensureInitialized();
+                const transaction = this.db.transaction([this.storeName], 'readwrite');
+                const store = transaction.objectStore(this.storeName);
+                return new Promise((resolve) => {
+                    const request = store.clear();
+                    request.onsuccess = () => resolve(true);
+                });
+            }
+        }
+
+        // 预警分析引擎
+        class WarningAnalysisEngine {
+            constructor() {}
+
+            /**
+             * 分析数据并生成预警结果
+             * @param {Array} data - 原始数据
+             * @param {Date} baseStart - 基期开始时间
+             * @param {Date} baseEnd - 基期结束时间
+             * @param {Date} currentStart - 现期开始时间
+             * @param {Date} currentEnd - 现期结束时间
+             * @param {number} threshold - 预警阈值（百分比）
+             * @returns {Object} 预警结果
+             */
+            analyze(data, baseStart, baseEnd, currentStart, currentEnd, threshold) {
+                // 确保时间顺序正确（开始时间 <= 结束时间）
+                if (baseStart > baseEnd) [baseStart, baseEnd] = [baseEnd, baseStart];
+                if (currentStart > currentEnd) [currentStart, currentEnd] = [currentEnd, currentStart];
+
+                // 筛选基期数据
+                const baseData = data.filter(item => {
+                    const itemDate = new Date(item[FIELD_MAPPING['开始时间']]);
+                    return itemDate >= baseStart && itemDate <= baseEnd;
+                });
+
+                // 筛选现期数据
+                const currentData = data.filter(item => {
+                    const itemDate = new Date(item[FIELD_MAPPING['开始时间']]);
+                    return itemDate >= currentStart && itemDate <= currentEnd;
+                });
+
+                // 检查是否有足够数据
+                const hasEnoughData = baseData.length > 0 || currentData.length > 0;
+
+                // 计算各维度的圈次数
+                const baseCounts = this.calculateDimensionCounts(baseData);
+                const currentCounts = this.calculateDimensionCounts(currentData);
+
+                // 分析各维度的波动情况
+                const stationWarnings = this.analyzeDimension(
+                    baseCounts.station, currentCounts.station, threshold
+                );
+
+                const customerWarnings = this.analyzeDimension(
+                    baseCounts.customer, currentCounts.customer, threshold
+                );
+
+                const satelliteWarnings = this.analyzeDimension(
+                    baseCounts.satellite, currentCounts.satellite, threshold
+                );
+
+                // 统计异常项总数
+                const increaseCount = [
+                    ...stationWarnings,
+                    ...customerWarnings,
+                    ...satelliteWarnings
+                ].filter(item => item.status === 'increase').length;
+
+                const decreaseCount = [
+                    ...stationWarnings,
+                    ...customerWarnings,
+                    ...satelliteWarnings
+                ].filter(item => item.status === 'decrease').length;
+
+                return {
+                    hasEnoughData,
+                    stationWarnings,
+                    customerWarnings,
+                    satelliteWarnings,
+                    increaseCount,
+                    decreaseCount,
+                    basePeriod: { start: baseStart, end: baseEnd },
+                    currentPeriod: { start: currentStart, end: currentEnd },
+                    baseTotal: baseData.length,
+                    currentTotal: currentData.length
+                };
+            }
+
+            /**
+             * 计算各维度的圈次数
+             */
+            calculateDimensionCounts(data) {
+                const stationCounts = {};
+                const customerCounts = {};
+                const satelliteCounts = {};
+
+                data.forEach(item => {
+                    // 统计测站
+                    const station = item[FIELD_MAPPING['测站名称']]?.toString().trim() || '未知';
+                    stationCounts[station] = (stationCounts[station] || 0) + 1;
+
+                    // 统计客户
+                    const customer = item[FIELD_MAPPING['客户名称']]?.toString().trim() || '未知';
+                    customerCounts[customer] = (customerCounts[customer] || 0) + 1;
+
+                    // 统计卫星
+                    const satellite = item[FIELD_MAPPING['卫星名称']]?.toString().trim() || '未知';
+                    satelliteCounts[satellite] = (satelliteCounts[satellite] || 0) + 1;
+                });
+
+                return {
+                    station: stationCounts,
+                    customer: customerCounts,
+                    satellite: satelliteCounts
+                };
+            }
+
+            /**
+             * 分析特定维度的波动情况
+             * 波动幅度 = (现期值 - 基期值) / 基期值 × 100%
+             */
+            analyzeDimension(baseCounts, currentCounts, threshold) {
+                const warnings = [];
+
+                // 获取所有相关项（现期和基期的并集）
+                const allItems = new Set([...Object.keys(currentCounts), ...Object.keys(baseCounts)]);
+
+                allItems.forEach(item => {
+                    const currentValue = currentCounts[item] || 0;
+                    const baseValue = baseCounts[item] || 0;
+
+                    // 计算波动幅度
+                    let fluctuation;
+                    if (baseValue === 0) {
+                        // 基期值为0的特殊情况
+                        fluctuation = currentValue > 0 ? 100 : 0; // 从0到有值，视为100%增长
+                    } else {
+                        fluctuation = ((currentValue - baseValue) / baseValue) * 100;
+                    }
+
+                    // 确定预警状态
+                    let status = 'normal';
+                    if (fluctuation >= threshold) {
+                        status = 'increase'; // 增长异常
+                    } else if (fluctuation <= -threshold) {
+                        status = 'decrease'; // 下降异常
+                    }
+
+                    warnings.push({
+                        item,
+                        baseValue,
+                        currentValue,
+                        fluctuation,
+                        status
+                    });
+                });
+
+                // 按波动幅度绝对值排序
+                return warnings.sort((a, b) => Math.abs(b.fluctuation) - Math.abs(a.fluctuation));
+            }
+        }
+
+        // 数据导出工具
+        class DataExporter {
+            /**
+             * 导出表格数据为CSV文件
+             * @param {Array} data - 要导出的数据
+             * @param {string} filename - 文件名
+             * @param {string} dimension - 维度名称（测站/客户/卫星）
+             */
+            exportToCSV(data, filename, dimension) {
+                if (!data || !data.length) {
+                    alert('没有可导出的数据');
+                    return;
+                }
+
+                // CSV表头
+                const headers = [
+                    dimension,
+                    '基期圈次',
+                    '现期圈次',
+                    '波动幅度(%)',
+                    '预警状态'
+                ];
+
+                // 转换数据为CSV行
+                const rows = [headers.join(',')];
+
+                data.forEach(item => {
+                    const statusText = item.status === 'increase' ? '增长异常' :
+                                      item.status === 'decrease' ? '下降异常' : '正常';
+
+                    const row = [
+                        `"${item.item}"`, // 处理包含逗号的情况
+                        item.baseValue,
+                        item.currentValue,
+                        item.fluctuation.toFixed(2),
+                        `"${statusText}"`
+                    ];
+                    rows.push(row.join(','));
+                });
+
+                // 创建CSV内容
+                const csvContent = rows.join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+                // 使用FileSaver保存文件
+                saveAs(blob, `${filename}.csv`);
+            }
+        }
+
+        // 日期时间工具
+        class DateTimeUtil {
+            /**
+             * 获取默认的时间范围：现期为当日早8点到前一日早8点，基期为前一日早8点到前前一日早8点
+             * 基于当前系统时间（北京时间）
+             */
+            getDefaultPeriods() {
+                // 获取当前系统时间（北京时间由浏览器自动处理）
+                const now = new Date();
+
+                // 计算现期结束时间：当前日期的早上8点
+                const currentEnd = new Date(now);
+                currentEnd.setHours(8, 0, 0, 0);
+
+                // 计算现期开始时间：前一天的早上8点
+                const currentStart = new Date(currentEnd);
+                currentStart.setDate(currentStart.getDate() - 1);
+
+                // 计算基期结束时间：现期开始时间（前一天的早上8点）
+                const baseEnd = new Date(currentStart);
+
+                // 计算基期开始时间：前两天的早上8点
+                const baseStart = new Date(baseEnd);
+                baseStart.setDate(baseStart.getDate() - 1);
+
+                return {
+                    baseStart,
+                    baseEnd,
+                    currentStart,
+                    currentEnd
+                };
+            }
+
+            /**
+             * 将日期转换为datetime-local输入框所需的格式 (YYYY-MM-DDThh:mm)
+             */
+            formatForInput(date) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+
+                return `${year}-${month}-${day}T${hours}:${minutes}`;
+            }
+
+            /**
+             * 格式化日期为可读性更好的字符串
+             */
+            formatForDisplay(date) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+
+                return `${year}-${month}-${day} ${hours}:${minutes}`;
+            }
+        }
+
+        // 主应用类
+        class WarningApp {
+            constructor() {
+                this.db = new SatelliteDB();
+                this.warningEngine = new WarningAnalysisEngine();
+                this.exporter = new DataExporter();
+                this.dateUtil = new DateTimeUtil();
+
+                // 应用状态
+                this.data = null;
+                this.rawData = null;
+                this.warningResults = null;
+                // 存储原始表格数据用于筛选
+                this.tableData = {
+                    station: [],
+                    customer: [],
+                    satellite: []
+                };
+
+                this.init();
+            }
+
+            async init() {
+                this.setupEventListeners();
+                this.setDefaultPeriods();
+                await this.loadData();
+            }
+
+            setupEventListeners() {
+                // 阈值滑块事件
+                const thresholdSlider = document.getElementById('fluctuationThreshold');
+                const thresholdValue = document.getElementById('thresholdValue');
+
+                thresholdSlider.addEventListener('input', (e) => {
+                    thresholdValue.textContent = e.target.value;
+                });
+
+                // 计算预警数据按钮
+                document.getElementById('calculateWarning').addEventListener('click', () => this.calculateWarnings());
+
+                // 移动端菜单
+                document.getElementById('mobileMenuBtn').addEventListener('click', () => {
+                    document.getElementById('mobileMenu').classList.toggle('hidden');
+                });
+
+                // 下载按钮事件
+                document.getElementById('downloadStationData').addEventListener('click', () => {
+                    if (this.warningResults) {
+                        this.exporter.exportToCSV(
+                            this.warningResults.stationWarnings,
+                            '测站波动预警数据',
+                            '测站名称'
+                        );
+                    }
+                });
+
+                document.getElementById('downloadCustomerData').addEventListener('click', () => {
+                    if (this.warningResults) {
+                        this.exporter.exportToCSV(
+                            this.warningResults.customerWarnings,
+                            '客户波动预警数据',
+                            '客户名称'
+                        );
+                    }
+                });
+
+                document.getElementById('downloadSatelliteData').addEventListener('click', () => {
+                    if (this.warningResults) {
+                        this.exporter.exportToCSV(
+                            this.warningResults.satelliteWarnings,
+                            '卫星波动预警数据',
+                            '卫星名称'
+                        );
+                    }
+                });
+
+                // 状态筛选按钮事件
+                document.querySelectorAll('.status-filter').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const status = e.target.dataset.status;
+                        const target = e.target.dataset.target;
+                        this.filterTableByStatus(target, status);
+                    });
+                });
+            }
+
+            // 设置默认的基期和现期时间
+            setDefaultPeriods() {
+                const periods = this.dateUtil.getDefaultPeriods();
+
+                document.getElementById('basePeriodStart').value = this.dateUtil.formatForInput(periods.baseStart);
+                document.getElementById('basePeriodEnd').value = this.dateUtil.formatForInput(periods.baseEnd);
+                document.getElementById('currentPeriodStart').value = this.dateUtil.formatForInput(periods.currentStart);
+                document.getElementById('currentPeriodEnd').value = this.dateUtil.formatForInput(periods.currentEnd);
+            }
+
+            // 按状态筛选表格数据
+            filterTableByStatus(target, status) {
+                // 更新筛选按钮状态
+                document.querySelectorAll(`.status-filter[data-target="${target}"]`).forEach(btn => {
+                    btn.classList.remove('filter-active');
+                });
+                document.querySelector(`.status-filter[data-target="${target}"][data-status="${status}"]`).classList.add('filter-active');
+
+                // 获取表格数据和表格体
+                const tableData = this.tableData[target];
+                const tableBody = document.getElementById(`${target}WarningTable`);
+
+                // 清空表格
+                tableBody.innerHTML = '';
+
+                // 如果没有数据
+                if (!tableData || !tableData.length) {
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="px-6 py-10 text-center text-gray-500">
+                                没有数据或未达到预警阈值
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                // 筛选数据
+                const filteredData = status === 'all'
+                    ? tableData
+                    : tableData.filter(item => item.status === status);
+
+                // 如果筛选后没有数据
+                if (!filteredData.length) {
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="px-6 py-10 text-center text-gray-500">
+                                没有符合筛选条件的数据
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                // 添加筛选后的数据行
+                filteredData.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.className = 'table-hover-row';
+
+                    // 格式化波动幅度
+                    const fluctuation = item.fluctuation.toFixed(2);
+                    const fluctuationClass = fluctuation >= 0 ? 'text-success' : 'text-danger';
+                    const fluctuationIcon = fluctuation >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+
+                    // 确定状态标签
+                    let statusHtml = '';
+                    if (item.status === 'increase') {
+                        statusHtml = '<span class="px-2 py-1 text-xs font-medium bg-success/10 text-success rounded-full">增长异常</span>';
+                    } else if (item.status === 'decrease') {
+                        statusHtml = '<span class="px-2 py-1 text-xs font-medium bg-danger/10 text-danger rounded-full">下降异常</span>';
+                    } else {
+                        statusHtml = '<span class="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">正常</span>';
+                    }
+
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">${item.item}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm text-gray-500">${item.baseValue}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm text-gray-500">${item.currentValue}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm ${fluctuationClass}">
+                                <i class="fa ${fluctuationIcon} mr-1"></i>${Math.abs(fluctuation)}%
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            ${statusHtml}
+                        </td>
+                    `;
+
+                    tableBody.appendChild(row);
+                });
+            }
+
+            async loadData() {
+                const dbLoading = document.getElementById('dbLoading');
+                dbLoading.classList.remove('hidden');
+
+                try {
+                    if (!await this.db.hasData()) {
+                        dbLoading.classList.add('hidden');
+                        document.getElementById('noDataAlert').classList.remove('hidden');
+                        return;
+                    }
+
+                    // 加载原始数据
+                    const rawData = await this.db.getAllDataWithProgress((p) => {
+                        document.getElementById('loadingProgress').style.width = `${p}%`;
+                    });
+
+                    this.rawData = rawData;
+
+                    // 提取嵌套数据
+                    this.data = rawData[0]?.data || [];
+
+                    // 显示内容区域
+                    dbLoading.classList.add('hidden');
+                    document.getElementById('settingsSection').classList.remove('hidden');
+                    document.getElementById('resultsSection').classList.remove('hidden');
+
+                } catch (error) {
+                    dbLoading.classList.add('hidden');
+                    console.error('加载数据失败:', error);
+                    document.getElementById('dbErrorAlert').classList.remove('hidden');
+                    document.getElementById('dbErrorMsg').textContent = '加载数据时发生错误';
+                }
+            }
+
+            async calculateWarnings() {
+                if (!this.data || !this.data.length) {
+                    alert('没有可用数据进行分析');
+                    return;
+                }
+
+                // 获取时间范围值
+                const baseStartValue = document.getElementById('basePeriodStart').value;
+                const baseEndValue = document.getElementById('basePeriodEnd').value;
+                const currentStartValue = document.getElementById('currentPeriodStart').value;
+                const currentEndValue = document.getElementById('currentPeriodEnd').value;
+
+                // 验证时间输入
+                if (!baseStartValue || !baseEndValue || !currentStartValue || !currentEndValue) {
+                    alert('请设置完整的基期和现期时间范围');
+                    return;
+                }
+
+                // 转换为日期对象
+                const baseStart = new Date(baseStartValue);
+                const baseEnd = new Date(baseEndValue);
+                const currentStart = new Date(currentStartValue);
+                const currentEnd = new Date(currentEndValue);
+
+                // 验证日期有效性
+                if (isNaN(baseStart.getTime()) || isNaN(baseEnd.getTime()) ||
+                    isNaN(currentStart.getTime()) || isNaN(currentEnd.getTime())) {
+                    alert('请输入有效的时间');
+                    return;
+                }
+
+                // 获取阈值
+                const threshold = parseInt(document.getElementById('fluctuationThreshold').value);
+
+                // 显示加载状态
+                const calculateBtn = document.getElementById('calculateWarning');
+                const originalBtnText = calculateBtn.innerHTML;
+                calculateBtn.disabled = true;
+                calculateBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i> 计算中...';
+
+                try {
+                    // 执行预警分析
+                    this.warningResults = this.warningEngine.analyze(
+                        this.data,
+                        baseStart,
+                        baseEnd,
+                        currentStart,
+                        currentEnd,
+                        threshold
+                    );
+
+                    // 保存原始表格数据用于筛选
+                    this.tableData.station = this.warningResults.stationWarnings;
+                    this.tableData.customer = this.warningResults.customerWarnings;
+                    this.tableData.satellite = this.warningResults.satelliteWarnings;
+
+                    // 更新概览统计
+                    document.getElementById('increaseCount').textContent =
+                        this.warningResults.increaseCount || 0;
+                    document.getElementById('decreaseCount').textContent =
+                        this.warningResults.decreaseCount || 0;
+
+                    // 显示周期信息
+                    document.getElementById('basePeriodDisplay').textContent =
+                        `${this.dateUtil.formatForDisplay(this.warningResults.basePeriod.start)} - ${this.dateUtil.formatForDisplay(this.warningResults.basePeriod.end)}`;
+                    document.getElementById('currentPeriodDisplay').textContent =
+                        `${this.dateUtil.formatForDisplay(this.warningResults.currentPeriod.start)} - ${this.dateUtil.formatForDisplay(this.warningResults.currentPeriod.end)}`;
+
+                    // 显示警告信息（如果数据不足）
+                    if (!this.warningResults.hasEnoughData) {
+                        alert('所选时间范围内没有足够的数据进行分析');
+                    }
+
+                    // 初始渲染表格（默认显示异常项：上涨和下降）
+                    this.filterTableByStatus('station', 'increase');
+                    this.filterTableByStatus('customer', 'increase');
+                    this.filterTableByStatus('satellite', 'increase');
+
+                } catch (error) {
+                    console.error('计算预警数据失败:', error);
+                    alert('计算预警数据时发生错误，请重试');
+                } finally {
+                    // 恢复按钮状态
+                    calculateBtn.disabled = false;
+                    calculateBtn.innerHTML = originalBtnText;
+                }
+            }
+        }
+
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', () => {
+            const app = new WarningApp();
+        });
+    </script>
+</body>
+</html>
