@@ -1,0 +1,1899 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据趋势分析 - 卫星任务数据分析平台</title>
+    <!-- 外部资源 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#36CFC9',
+                        accent: '#722ED1',
+                        warning: '#FF7D00',
+                        danger: '#F53F3F',
+                        success: '#00B42A',
+                    },
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .card-shadow {
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            .modal-backdrop {
+                backdrop-filter: blur(2px);
+            }
+            .filter-select {
+                @apply w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all;
+            }
+            .chart-container {
+                @apply h-80 border border-gray-200 rounded-lg p-4 relative mb-8;
+            }
+            .tab-item {
+                @apply px-4 py-2 rounded-md cursor-pointer transition-all;
+            }
+            .tab-item-active {
+                @apply bg-primary text-white;
+            }
+            .tab-item-inactive {
+                @apply bg-gray-100 text-gray-700 hover:bg-gray-200;
+            }
+            .dropdown-container {
+                @apply relative;
+            }
+            .dropdown-content {
+                @apply absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg overflow-hidden max-h-60 overflow-y-auto;
+            }
+            .multiselect-checkbox {
+                @apply mr-2 h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded;
+            }
+            .selected-tags {
+                @apply flex flex-wrap gap-2 mt-1;
+            }
+            .selected-tag {
+                @apply bg-primary/10 text-primary text-xs px-2 py-1 rounded-full flex items-center;
+            }
+            .tag-remove {
+                @apply ml-1 cursor-pointer hover:text-primary/80;
+            }
+            .select-all-item {
+                @apply px-4 py-2 border-b border-gray-100 font-medium text-primary cursor-pointer hover:bg-primary/5;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 顶部导航 -->
+    <header class="bg-white border-b border-gray-200">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-line-chart text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-primary">卫星任务数据分析平台</h1>
+            </div>
+
+            <nav class="hidden md:flex items-center space-x-6">
+                <a href="index.html" class="text-gray-600 hover:text-primary transition-colors px-1 py-5">首页</a>
+                <a href="trend-analysis.html" class="text-primary font-medium border-b-2 border-primary px-1 py-5">数据趋势分析</a>
+                 <a href="data-distribution.html" class="text-gray-600 hover:text-primary transition-colors px-1 py-5">数据分布</a>
+                <a href="circle-warning.html" class="text-gray-600 hover:text-primary transition-colors px-1 py-5">数据预警</a>
+            </nav>
+
+            <button class="md:hidden text-gray-600 hover:text-primary" id="mobileMenuBtn">
+                <i class="fa fa-bars text-xl"></i>
+            </button>
+        </div>
+
+        <div class="md:hidden hidden bg-white border-t border-gray-200" id="mobileMenu">
+            <div class="container mx-auto px-4 py-2">
+                <a href="index.html" class="block py-3 text-gray-600 hover:text-primary">首页</a>
+                <a href="trend-analysis.html" class="block py-3 text-primary font-medium">数据趋势分析</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6">
+        <h2 class="text-xl font-bold mb-6 text-gray-800">数据趋势分析</h2>
+
+        <!-- 数据状态提示区 -->
+        <div id="dbLoading" class="mb-6 p-3 bg-primary/10 text-primary rounded-lg flex items-center hidden">
+            <i class="fa fa-spinner fa-spin mr-2"></i>
+            <span>正在从数据库加载数据...</span>
+            <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                <div id="loadingProgress" class="bg-primary h-1.5 rounded-full" style="width: 0%"></div>
+            </div>
+            <div class="text-xs text-gray-500 mt-1">
+                <span id="loadingStatus">准备加载...</span>
+            </div>
+        </div>
+
+        <div id="noDataAlert" class="bg-warning/10 text-warning p-4 rounded-lg mb-6 hidden">
+            <i class="fa fa-exclamation-circle mr-2"></i>
+            <span>请先在首页导入数据，然后再进行趋势分析</span>
+        </div>
+
+        <div id="dataStructureAlert" class="bg-warning/10 text-warning p-4 rounded-lg mb-6 hidden">
+            <i class="fa fa-exclamation-circle mr-2"></i>
+            <span>数据结构识别异常</span>
+            <div class="mt-2 text-sm">
+                <p id="structureMsg">系统检测到数据格式可能不符合预期，已尝试自动修复。</p>
+                <div id="structureDetails" class="mt-1 bg-white p-2 rounded text-xs"></div>
+            </div>
+        </div>
+
+        <div id="dbErrorAlert" class="bg-danger/10 text-danger p-4 rounded-lg mb-6 hidden">
+            <i class="fa fa-exclamation-circle mr-2"></i>
+            <span id="dbErrorMsg">数据库操作出错</span>
+            <div id="dbErrorDetails" class="mt-2 text-sm hidden">
+                <p>错误详情:</p>
+                <pre class="bg-white p-2 rounded text-xs"></pre>
+            </div>
+            <button id="fixDbBtn" class="mt-2 text-sm bg-primary text-white px-3 py-1 rounded hover:bg-primary/90 transition-colors hidden">
+                尝试修复数据库
+            </button>
+        </div>
+
+        <div id="debugInfo" class="bg-gray-100 p-4 rounded-lg mb-6 hidden">
+            <h3 class="font-medium text-gray-700 mb-2">调试信息</h3>
+            <pre id="debugContent" class="text-sm text-gray-600"></pre>
+        </div>
+
+        <!-- 筛选条件区域 -->
+        <section id="filterSection" class="mb-8 bg-white rounded-lg p-6 card-shadow hidden">
+            <h3 class="text-lg font-semibold mb-4">筛选条件</h3>
+
+            <!-- 时间范围和周期设置 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 pb-6 border-b border-gray-100">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">统计开始日期</label>
+                    <input type="date" id="startDate" class="filter-select">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">统计结束日期</label>
+                    <input type="date" id="endDate" class="filter-select">
+                </div>
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-sm font-medium text-gray-700">统计周期</label>
+                        <button id="configGroupingBtn" class="text-gray-500 hover:text-primary transition-colors p-1" title="配置周期规则">
+                            <i class="fa fa-cog"></i>
+                        </button>
+                    </div>
+                    <select id="groupBy" class="filter-select">
+                        <option value="day">按日</option>
+                        <option value="week">按周</option>
+                        <option value="month">按月</option>
+                        <option value="quarter">按季度</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 多条件筛选区域（支持多选和全选） -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                <!-- 测站名称筛选（多选） -->
+                <div class="dropdown-container">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">测站名称 <span class="text-xs text-gray-500">(可多选)</span></label>
+                    <div class="flex items-center justify-between filter-select cursor-pointer" id="stationDropdown">
+                        <span id="stationDisplay">请选择测站</span>
+                        <i class="fa fa-chevron-down text-xs"></i>
+                    </div>
+                    <div class="selected-tags" id="stationTags"></div>
+                    <div class="dropdown-content hidden" id="stationOptions">
+                        <div class="p-2 border-b border-gray-100">
+                            <input type="text" placeholder="搜索测站..." class="w-full p-1 text-sm border border-gray-200 rounded" id="stationSearch">
+                        </div>
+                        <div class="select-all-item" id="selectAllStations">
+                            <i class="fa fa-check-square-o mr-2"></i>全选
+                        </div>
+                        <!-- 选项将通过JS动态添加 -->
+                    </div>
+                    <input type="hidden" id="stationValue" value="">
+                </div>
+
+                <!-- 客户名称筛选（多选） -->
+                <div class="dropdown-container">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">客户名称 <span class="text-xs text-gray-500">(可多选)</span></label>
+                    <div class="flex items-center justify-between filter-select cursor-pointer" id="customerDropdown">
+                        <span id="customerDisplay">请选择客户</span>
+                        <i class="fa fa-chevron-down text-xs"></i>
+                    </div>
+                    <div class="selected-tags" id="customerTags"></div>
+                    <div class="dropdown-content hidden" id="customerOptions">
+                        <div class="p-2 border-b border-gray-100">
+                            <input type="text" placeholder="搜索客户..." class="w-full p-1 text-sm border border-gray-200 rounded" id="customerSearch">
+                        </div>
+                        <div class="select-all-item" id="selectAllCustomers">
+                            <i class="fa fa-check-square-o mr-2"></i>全选
+                        </div>
+                        <!-- 选项将通过JS动态添加 -->
+                    </div>
+                    <input type="hidden" id="customerValue" value="">
+                </div>
+
+                <!-- 卫星名称筛选（多选） -->
+                <div class="dropdown-container">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">卫星名称 <span class="text-xs text-gray-500">(可多选)</span></label>
+                    <div class="flex items-center justify-between filter-select cursor-pointer" id="satelliteDropdown">
+                        <span id="satelliteDisplay">请先选择测站或客户</span>
+                        <i class="fa fa-chevron-down text-xs"></i>
+                    </div>
+                    <div class="selected-tags" id="satelliteTags"></div>
+                    <div class="dropdown-content hidden" id="satelliteOptions">
+                        <div class="p-2 border-b border-gray-100">
+                            <input type="text" placeholder="搜索卫星..." class="w-full p-1 text-sm border border-gray-200 rounded" id="satelliteSearch">
+                        </div>
+                        <div class="select-all-item" id="selectAllSatellites">
+                            <i class="fa fa-check-square-o mr-2"></i>全选
+                        </div>
+                        <!-- 选项将通过JS动态添加 -->
+                    </div>
+                    <input type="hidden" id="satelliteValue" value="">
+                </div>
+
+                <!-- 任务结果状态筛选（多选） -->
+                <div class="dropdown-container">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">任务结果状态 <span class="text-xs text-gray-500">(可多选)</span></label>
+                    <div class="flex items-center justify-between filter-select cursor-pointer" id="statusDropdown">
+                        <span id="statusDisplay">请先选择卫星</span>
+                        <i class="fa fa-chevron-down text-xs"></i>
+                    </div>
+                    <div class="selected-tags" id="statusTags"></div>
+                    <div class="dropdown-content hidden" id="statusOptions">
+                        <div class="p-2 border-b border-gray-100">
+                            <input type="text" placeholder="搜索状态..." class="w-full p-1 text-sm border border-gray-200 rounded" id="statusSearch">
+                        </div>
+                        <div class="select-all-item" id="selectAllStatuses">
+                            <i class="fa fa-check-square-o mr-2"></i>全选
+                        </div>
+                        <!-- 选项将通过JS动态添加 -->
+                    </div>
+                    <input type="hidden" id="statusValue" value="">
+                </div>
+
+                <!-- 任务类型筛选（多选） -->
+                <div class="dropdown-container">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">任务类型 <span class="text-xs text-gray-500">(可多选)</span></label>
+                    <div class="flex items-center justify-between filter-select cursor-pointer" id="typeDropdown">
+                        <span id="typeDisplay">请先选择任务状态</span>
+                        <i class="fa fa-chevron-down text-xs"></i>
+                    </div>
+                    <div class="selected-tags" id="typeTags"></div>
+                    <div class="dropdown-content hidden" id="typeOptions">
+                        <div class="p-2 border-b border-gray-100">
+                            <input type="text" placeholder="搜索类型..." class="w-full p-1 text-sm border border-gray-200 rounded" id="typeSearch">
+                        </div>
+                        <div class="select-all-item" id="selectAllTypes">
+                            <i class="fa fa-check-square-o mr-2"></i>全选
+                        </div>
+                        <!-- 选项将通过JS动态添加 -->
+                    </div>
+                    <input type="hidden" id="typeValue" value="">
+                </div>
+
+                <div class="flex items-end">
+                    <button id="resetFilters" class="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors mr-2">
+                        重置筛选
+                    </button>
+                </div>
+            </div>
+
+            <button id="applyFilters" class="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors">
+                应用筛选并生成图表
+            </button>
+        </section>
+
+        <!-- 图表展示区域 -->
+        <section id="chartsSection" class="space-y-8 hidden">
+            <div class="bg-white rounded-lg p-6 card-shadow">
+                <h3 class="text-lg font-semibold mb-4 flex items-center justify-between">
+                    <span>测站名称趋势分析</span>
+                    <div class="flex gap-2">
+                        <button class="chart-download-btn px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition"
+                                data-chart="stationChart" data-type="image" title="下载图表图片">
+                            <i class="fa fa-download mr-1"></i>下载图表
+                        </button>
+                        <button class="chart-download-btn px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition"
+                                data-chart="stationChart" data-type="csv" title="下载图表数据">
+                            <i class="fa fa-table mr-1"></i>下载数据
+                        </button>
+                    </div>
+                </h3>
+                <div class="chart-container">
+                    <canvas id="stationChart"></canvas>
+                    <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="stationChartEmpty">
+                        <div class="text-center">
+                            <i class="fa fa-line-chart text-4xl mb-2"></i>
+                            <p>没有符合条件的数据</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg p-6 card-shadow">
+                <h3 class="text-lg font-semibold mb-4 flex items-center justify-between">
+                    <span>客户名称趋势分析</span>
+                    <div class="flex gap-2">
+                        <button class="chart-download-btn px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition"
+                                data-chart="customerChart" data-type="image" title="下载图表图片">
+                            <i class="fa fa-download mr-1"></i>下载图表
+                        </button>
+                        <button class="chart-download-btn px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition"
+                                data-chart="customerChart" data-type="csv" title="下载图表数据">
+                            <i class="fa fa-table mr-1"></i>下载数据
+                        </button>
+                    </div>
+                </h3>
+                <div class="chart-container">
+                    <canvas id="customerChart"></canvas>
+                    <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="customerChartEmpty">
+                        <div class="text-center">
+                            <i class="fa fa-line-chart text-4xl mb-2"></i>
+                            <p>没有符合条件的数据</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg p-6 card-shadow">
+                <h3 class="text-lg font-semibold mb-4 flex items-center justify-between">
+                    <span>卫星名称趋势分析</span>
+                    <div class="flex gap-2">
+                        <button class="chart-download-btn px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition"
+                                data-chart="satelliteChart" data-type="image" title="下载图表图片">
+                            <i class="fa fa-download mr-1"></i>下载图表
+                        </button>
+                        <button class="chart-download-btn px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition"
+                                data-chart="satelliteChart" data-type="csv" title="下载图表数据">
+                            <i class="fa fa-table mr-1"></i>下载数据
+                        </button>
+                    </div>
+                </h3>
+                <div class="chart-container">
+                    <canvas id="satelliteChart"></canvas>
+                    <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="satelliteChartEmpty">
+                        <div class="text-center">
+                            <i class="fa fa-line-chart text-4xl mb-2"></i>
+                            <p>没有符合条件的数据</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg p-6 card-shadow">
+                <h3 class="text-lg font-semibold mb-4 flex items-center justify-between">
+                    <span>任务结果状态趋势分析</span>
+                    <div class="flex gap-2">
+                        <button class="chart-download-btn px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition"
+                                data-chart="statusChart" data-type="image" title="下载图表图片">
+                            <i class="fa fa-download mr-1"></i>下载图表
+                        </button>
+                        <button class="chart-download-btn px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition"
+                                data-chart="statusChart" data-type="csv" title="下载图表数据">
+                            <i class="fa fa-table mr-1"></i>下载数据
+                        </button>
+                    </div>
+                </h3>
+                <div class="chart-container">
+                    <canvas id="statusChart"></canvas>
+                    <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="statusChartEmpty">
+                        <div class="text-center">
+                            <i class="fa fa-line-chart text-4xl mb-2"></i>
+                            <p>没有符合条件的数据</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg p-6 card-shadow">
+                <h3 class="text-lg font-semibold mb-4 flex items-center justify-between">
+                    <span>任务类型趋势分析</span>
+                    <div class="flex gap-2">
+                        <button class="chart-download-btn px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition"
+                                data-chart="typeChart" data-type="image" title="下载图表图片">
+                            <i class="fa fa-download mr-1"></i>下载图表
+                        </button>
+                        <button class="chart-download-btn px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition"
+                                data-chart="typeChart" data-type="csv" title="下载图表数据">
+                            <i class="fa fa-table mr-1"></i>下载数据
+                        </button>
+                    </div>
+                </h3>
+                <div class="chart-container">
+                    <canvas id="typeChart"></canvas>
+                    <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="typeChartEmpty">
+                        <div class="text-center">
+                            <i class="fa fa-line-chart text-4xl mb-2"></i>
+                            <p>没有符合条件的数据</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 周期规则配置模态框 -->
+    <div id="groupingConfigModal" class="fixed inset-0 bg-black/50 modal-backdrop flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg w-full max-w-md p-6 transform transition-all scale-95 opacity-0" id="modalContent">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">周期规则配置</h3>
+                <button id="closeConfigModal" class="text-gray-500 hover:text-gray-700 transition-colors">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+
+            <div class="mb-6 pb-4 border-b border-gray-100">
+                <h4 class="font-medium mb-3 flex items-center">
+                    <i class="fa fa-calendar-o text-primary mr-2"></i>按日周期
+                </h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">周期起始时间</label>
+                        <input type="time" id="dayStart" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" value="00:00">
+                    </div>
+                    <div>
+                        <p class="block text-sm text-gray-600 mb-1">周期范围</p>
+                        <div class="p-2 border border-gray-200 rounded-md bg-gray-50 text-sm">
+                            X日 <span id="dayStartDisplay">00:00</span> 至 X+1日 <span id="dayEndDisplay">00:00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-6 pb-4 border-b border-gray-100">
+                <h4 class="font-medium mb-3 flex items-center">
+                    <i class="fa fa-calendar-week-o text-primary mr-2"></i>按周周期
+                </h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">周起始日</label>
+                        <select id="weekStartDay" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all">
+                            <option value="0">周日</option>
+                            <option value="1" selected>周一</option>
+                            <option value="2">周二</option>
+                            <option value="3">周三</option>
+                            <option value="4">周四</option>
+                            <option value="5">周五</option>
+                            <option value="6">周六</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">起始时间</label>
+                        <input type="time" id="weekStartTime" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" value="00:00">
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-6 pb-4 border-b border-gray-100">
+                <h4 class="font-medium mb-3 flex items-center">
+                    <i class="fa fa-calendar text-primary mr-2"></i>按月周期
+                </h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">月起始日期</label>
+                        <input type="number" id="monthStartDate" min="1" max="31" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" value="1">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">起始时间</label>
+                        <input type="time" id="monthStartTime" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" value="00:00">
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <h4 class="font-medium mb-3 flex items-center">
+                    <i class="fa fa-calendar-check-o text-primary mr-2"></i>按季度周期
+                </h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">季度起始月份</label>
+                        <select id="quarterStartMonth" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all">
+                            <option value="1">1月（Q1:1-3月）</option>
+                            <option value="4">4月（Q2:4-6月）</option>
+                            <option value="7">7月（Q3:7-9月）</option>
+                            <option value="10">10月（Q4:10-12月）</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">起始时间</label>
+                        <input type="time" id="quarterStartTime" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" value="00:00">
+                    </div>
+                </div>
+            </div>
+
+            <button id="saveGroupingConfig" class="w-full px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors">
+                保存配置
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 字段映射配置
+        const FIELD_MAPPING = {
+            '客户名称': '所属客户',
+            '卫星名称': '卫星名称',
+            '测站名称': '测站名称',
+            '任务结果状态': '任务结果状态',
+            '任务类型': '任务类型',
+            '开始时间': '开始时间'
+        };
+
+        // IndexedDB工具类（不变）
+        class SatelliteDB {
+            constructor() {
+                this.dbName = 'SatelliteDataDB';
+                this.storeName = 'satelliteData';
+                this.db = null;
+                this.initialized = false;
+                this.initPromise = null;
+                this.TIMEOUT_DURATION = 15000;
+                this.requiredIndex = 'byTimestamp';
+            }
+
+            async init() {
+                if (this.initialized) return Promise.resolve(this.db);
+                if (this.initPromise) return this.initPromise;
+
+                this.initPromise = Promise.race([
+                    new Promise((resolve, reject) => {
+                        const request = indexedDB.open(this.dbName, 3);
+
+                        request.onupgradeneeded = (event) => {
+                            this.db = event.target.result;
+                            if (!this.db.objectStoreNames.contains(this.storeName)) {
+                                const store = this.db.createObjectStore(this.storeName, { keyPath: 'id' });
+                                store.createIndex(this.requiredIndex, 'timestamp', { unique: false });
+                            }
+                        };
+
+                        request.onsuccess = (event) => {
+                            this.db = event.target.result;
+                            this.initialized = true;
+                            resolve(this.db);
+                        };
+
+                        request.onerror = (event) => {
+                            this.initialized = false;
+                            reject(event.target.error);
+                        };
+                    }),
+                    new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('数据库连接超时')), this.TIMEOUT_DURATION);
+                    })
+                ]);
+
+                return this.initPromise;
+            }
+
+            async ensureInitialized() {
+                if (!this.initialized) await this.init();
+                return this.db;
+            }
+
+            async getAllDataWithProgress(progressCallback) {
+                await this.ensureInitialized();
+                const transaction = this.db.transaction([this.storeName], 'readonly');
+                const store = transaction.objectStore(this.storeName);
+                const cursorRequest = store.openCursor(null, 'prev');
+
+                return new Promise((resolve, reject) => {
+                    const results = [];
+                    let count = 0;
+
+                    cursorRequest.onsuccess = (event) => {
+                        const cursor = event.target.result;
+                        if (cursor) {
+                            results.push(cursor.value);
+                            count++;
+                            if (progressCallback) progressCallback(Math.min(100, count * 10), count, count);
+                            cursor.continue();
+                        } else {
+                            resolve(results);
+                        }
+                    };
+
+                    cursorRequest.onerror = (event) => reject(event.target.error);
+                });
+            }
+
+            async hasData() {
+                const count = await this.getTotalCount();
+                return count > 0;
+            }
+
+            async getTotalCount() {
+                await this.ensureInitialized();
+                const transaction = this.db.transaction([this.storeName], 'readonly');
+                const store = transaction.objectStore(this.storeName);
+                return new Promise((resolve) => {
+                    const countRequest = store.count();
+                    countRequest.onsuccess = () => resolve(countRequest.result);
+                });
+            }
+
+            async clearData() {
+                await this.ensureInitialized();
+                const transaction = this.db.transaction([this.storeName], 'readwrite');
+                const store = transaction.objectStore(this.storeName);
+                return new Promise((resolve) => {
+                    const request = store.clear();
+                    request.onsuccess = () => resolve(true);
+                });
+            }
+        }
+
+        // 周期规则引擎（保留现有逻辑）
+        class CycleRuleEngine {
+            constructor() {
+                this.config = {
+                    day: { start: '00:00' },
+                    week: { startDay: 1, startTime: '00:00' },
+                    month: { startDate: 1, startTime: '00:00' },
+                    quarter: { startMonth: 1, startTime: '00:00' }
+                };
+                this.loadConfig();
+            }
+
+            loadConfig() {
+                const savedConfig = localStorage.getItem('cycleRules');
+                if (savedConfig) this.config = JSON.parse(savedConfig);
+            }
+
+            saveConfig() {
+                localStorage.setItem('cycleRules', JSON.stringify(this.config));
+            }
+
+            updateConfig(newConfig) {
+                this.config = { ...this.config, ...newConfig };
+                this.saveConfig();
+            }
+
+            groupByStartTime(data, groupBy, planIdField, startTimeField) {
+                const sortedData = [...data].sort((a, b) => {
+                    // a[startTimeField] 可能是 Date 或 字符串，转换为 Date 对象比较
+                    const dateA = a[startTimeField] instanceof Date ? a[startTimeField] : new Date(a[startTimeField]);
+                    const dateB = b[startTimeField] instanceof Date ? b[startTimeField] : new Date(b[startTimeField]);
+                    return dateA - dateB;
+                });
+
+                const groups = {};
+                const groupMetadata = {};
+
+                sortedData.forEach(item => {
+                    const startTime = item[startTimeField];
+                    if (!startTime) return;
+
+                    const itemDate = startTime instanceof Date ? startTime : new Date(startTime);
+                    let group;
+
+                    switch (groupBy) {
+                        case 'day': group = this.getDayGroup(itemDate); break;
+                        case 'week': group = this.getWeekGroup(itemDate); break;
+                        case 'month': group = this.getMonthGroup(itemDate); break;
+                        case 'quarter': group = this.getQuarterGroup(itemDate); break;
+                        default: return;
+                    }
+
+                    if (!groups[group.key]) {
+                        groups[group.key] = [];
+                        groupMetadata[group.key] = group;
+                    }
+                    groups[group.key].push(item);
+                });
+
+                const sortedKeys = Object.keys(groups).sort((a, b) =>
+                    groupMetadata[a].rangeStart - groupMetadata[b].rangeStart
+                );
+
+                return { groups, groupMetadata, sortedKeys };
+            }
+
+            getDayGroup(date) {
+                const { hours, minutes } = this.parseTimeToHoursMinutes(this.config.day.start);
+                const originalDate = new Date(date);
+
+                // 创建参考日期（只保留年月日）
+                const referenceDate = new Date(originalDate.getFullYear(), originalDate.getMonth(), originalDate.getDate());
+                // 设置参考起始时间
+                referenceDate.setHours(hours, minutes, 0, 0);
+
+                // 修复0点周期计算问题：
+                let cycleStart;
+                if (hours === 0 && minutes === 0) {
+                    cycleStart = new Date(originalDate.getFullYear(), originalDate.getMonth(), originalDate.getDate(), 0, 0, 0, 0);
+                } else {
+                    cycleStart = originalDate >= referenceDate
+                        ? referenceDate
+                        : new Date(referenceDate.getTime() - 24 * 60 * 60 * 1000);
+                }
+
+                const cycleEnd = new Date(cycleStart.getTime() + 24 * 60 * 60 * 1000);
+
+                const groupKey = `${cycleStart.getFullYear()}-${String(cycleStart.getMonth() + 1).padStart(2, '0')}-${String(cycleStart.getDate()).padStart(2, '0')}`;
+
+                if (hours === 0 && minutes === 0) {
+                    const testDate = new Date(originalDate);
+                    testDate.setHours(0, 0, 0, 0);
+                    if (originalDate >= testDate && originalDate < new Date(testDate.getTime() + 24 * 60 * 60 * 1000)) {
+                        const correctKey = `${testDate.getFullYear()}-${String(testDate.getMonth() + 1).padStart(2, '0')}-${String(testDate.getDate()).padStart(2, '0')}`;
+                        if (correctKey !== groupKey) {
+                            return {
+                                key: correctKey,
+                                label: correctKey,
+                                rangeStart: testDate,
+                                rangeEnd: new Date(testDate.getTime() + 24 * 60 * 60 * 1000)
+                            };
+                        }
+                    }
+                }
+
+                return { key: groupKey, label: groupKey, rangeStart: cycleStart, rangeEnd: cycleEnd };
+            }
+
+            getWeekGroup(date) {
+                const { startDay, startTime } = this.config.week;
+                const { hours, minutes } = this.parseTimeToHoursMinutes(startTime);
+
+                const originalDate = new Date(date);
+                const referenceDate = new Date(originalDate);
+                referenceDate.setHours(hours, minutes, 0, 0);
+
+                let dayDiff = referenceDate.getDay() - startDay;
+                if (dayDiff < 0) dayDiff += 7;
+
+                const cycleStart = new Date(referenceDate);
+                cycleStart.setDate(referenceDate.getDate() - dayDiff);
+
+                if (originalDate < cycleStart) {
+                    cycleStart.setDate(cycleStart.getDate() - 7);
+                }
+
+                const cycleEnd = new Date(cycleStart);
+                cycleEnd.setDate(cycleEnd.getDate() + 7);
+
+                const weekNumber = this.getWeekNumber(cycleStart);
+                const groupKey = `${cycleStart.getFullYear()}-W${weekNumber}`;
+
+                return { key: groupKey, label: groupKey, rangeStart: cycleStart, rangeEnd: cycleEnd };
+            }
+
+            getMonthGroup(date) {
+                const { startDate, startTime } = this.config.month;
+                const { hours, minutes } = this.parseTimeToHoursMinutes(startTime);
+
+                const originalDate = new Date(date);
+                const year = originalDate.getFullYear();
+                const month = originalDate.getMonth();
+
+                const referenceDate = new Date(year, month, startDate, hours, minutes, 0, 0);
+
+                let cycleStart;
+                if (originalDate >= referenceDate) {
+                    cycleStart = new Date(referenceDate);
+                } else {
+                    cycleStart = new Date(month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1, startDate, hours, minutes, 0, 0);
+                }
+
+                const cycleEnd = new Date(cycleStart.getFullYear(), cycleStart.getMonth() + 1, startDate, hours, minutes, 0, 0);
+
+                const groupKey = `${cycleStart.getFullYear()}-${String(cycleStart.getMonth() + 1).padStart(2, '0')}`;
+
+                return { key: groupKey, label: groupKey, rangeStart: cycleStart, rangeEnd: cycleEnd };
+            }
+
+            getQuarterGroup(date) {
+                const { startMonth, startTime } = this.config.quarter;
+                const { hours, minutes } = this.parseTimeToHoursMinutes(startTime);
+
+                const originalDate = new Date(date);
+                const year = originalDate.getFullYear();
+                const month = originalDate.getMonth() + 1; // 1-12
+
+                const relative = (month - startMonth + 12) % 12;
+                const quarterIndex = Math.floor(relative / 3); // 0..3 within the cycle
+                const quarterStartMonth = ((startMonth + quarterIndex * 3 - 1) % 12) + 1; // 1-12
+
+                const quarterStartYear = (quarterStartMonth > month) ? year - 1 : year;
+
+                const cycleStart = new Date(quarterStartYear, quarterStartMonth - 1, 1, hours, minutes, 0, 0);
+                const cycleEnd = new Date(cycleStart.getFullYear(), cycleStart.getMonth() + 3, 1, hours, minutes, 0, 0);
+
+                const quarterNumber = Math.floor((quarterStartMonth - 1) / 3) + 1;
+                const groupKey = `${cycleStart.getFullYear()}-Q${quarterNumber}`;
+
+                return { key: groupKey, label: groupKey, rangeStart: cycleStart, rangeEnd: cycleEnd };
+            }
+
+            parseTimeToHoursMinutes(timeStr) {
+                const [hours, minutes] = timeStr.split(':').map(Number);
+                return { hours: hours || 0, minutes: minutes || 0 };
+            }
+
+            getWeekNumber(date) {
+                const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+                const pastDaysOfYear = (date - firstDayOfYear) / 86400000;
+                return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+            }
+        }
+
+        // 页面加载完成后初始化日期（简化逻辑）
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date();
+            const formatDate = (date) => {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+            const sevenDaysAgo = new Date(today);
+            sevenDaysAgo.setDate(today.getDate() - 7);
+
+            const startDateInput = document.getElementById('startDate');
+            const endDateInput = document.getElementById('endDate');
+            if (startDateInput) startDateInput.value = formatDate(sevenDaysAgo);
+            if (endDateInput) endDateInput.value = formatDate(today);
+        });
+
+        // 图表生成器（曲线图）
+        class ChartGenerator {
+            constructor() {
+                this.charts = {};
+                this.colors = [
+                    '#165DFF', '#36CFC9', '#722ED1', '#FF7D00', '#F53F3F',
+                    '#00B42A', '#86909C', '#F7BA1E', '#E53E3E', '#48BB78',
+                    '#3182CE', '#805AD5', '#ED8936', '#ECC94B', '#6B46C1'
+                ];
+                this.lineStyles = ['solid', 'dashed', 'dotted'];
+            }
+
+            destroyChart(chartId) {
+                if (this.charts[chartId]) {
+                    this.charts[chartId].destroy();
+                    delete this.charts[chartId];
+                }
+            }
+
+            generateTrendChart(chartId, title, xLabels, datasets) {
+                this.destroyChart(chartId);
+                const ctx = document.getElementById(chartId).getContext('2d');
+                const emptyState = document.getElementById(`${chartId}Empty`);
+
+                const hasData = datasets.some(dataset => dataset.data.some(v => v > 0));
+                if (!hasData) {
+                    if (emptyState) emptyState.classList.remove('hidden');
+                    return null;
+                }
+
+                if (emptyState) emptyState.classList.add('hidden');
+
+                // 曲线图样式配置
+                const styledDatasets = datasets.map((dataset, i) => ({
+                    label: dataset.label,
+                    data: dataset.data,
+                    borderColor: this.colors[i % this.colors.length],
+                    backgroundColor: `${this.colors[i % this.colors.length]}20`,
+                    borderWidth: 2,
+                    borderDash: this.lineStyles[i % this.lineStyles.length] === 'dashed' ? [5, 5] :
+                                this.lineStyles[i % this.lineStyles.length] === 'dotted' ? [2, 2] : [],
+                    tension: 0.3,
+                    fill: false,
+                    pointBackgroundColor: this.colors[i % this.colors.length],
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }));
+
+                const chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: xLabels,
+                        datasets: styledDatasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: title,
+                                font: { size: 16 }
+                            },
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    boxWidth: 12,
+                                    usePointStyle: true,
+                                    pointStyle: 'circle'
+                                }
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        return `${context.dataset.label}: ${context.raw} 次`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    precision: 0,
+                                    stepSize: 1
+                                }
+                            }
+                        },
+                        animation: {
+                            duration: 1000,
+                            easing: 'easeOutQuart'
+                        }
+                    }
+                });
+
+                this.charts[chartId] = chart;
+                return chart;
+            }
+        }
+
+        // 支持全选的多选下拉组件（不变）
+        class MultiSelectDropdown {
+            constructor(dropdownId, optionsId, displayId, valueId, tagsId, searchId, selectAllId, onChange) {
+                this.dropdownId = dropdownId;
+                this.optionsId = optionsId;
+                this.displayId = displayId;
+                this.valueId = valueId;
+                this.tagsId = tagsId;
+                this.searchId = searchId;
+                this.selectAllId = selectAllId;
+                this.onChange = onChange;
+
+                this.selectedValues = [];
+                this.allOptions = [];
+                this.isAllSelected = false;
+
+                this.init();
+            }
+
+            init() {
+                const dropdownEl = document.getElementById(this.dropdownId);
+                if (dropdownEl) {
+                    dropdownEl.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.toggleDropdown();
+                    });
+                }
+
+                const searchEl = document.getElementById(this.searchId);
+                if (searchEl) {
+                    searchEl.addEventListener('input', (e) => {
+                        this.filterOptions(e.target.value);
+                    });
+                }
+
+                const selectAllCheckbox = document.getElementById(this.selectAllId);
+                if (selectAllCheckbox) {
+                    selectAllCheckbox.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.toggleSelectAll();
+                    });
+                }
+
+                document.addEventListener('click', (e) => {
+                    const optionsContainer = document.getElementById(this.optionsId);
+                    const isClickInside = optionsContainer && (optionsContainer.contains(e.target) ||
+                                          (dropdownEl && dropdownEl.contains(e.target)));
+
+                    if (!isClickInside) {
+                        this.closeDropdown();
+                    }
+                });
+            }
+
+            setOptions(options) {
+                this.allOptions = [...options];
+                this.renderOptions();
+            }
+
+            renderOptions(filter = '') {
+                const optionsContainer = document.getElementById(this.optionsId);
+                if (!optionsContainer) return;
+
+                while (optionsContainer.children.length > 2) {
+                    optionsContainer.removeChild(optionsContainer.lastChild);
+                }
+
+                const filteredOptions = this.allOptions.filter(option =>
+                    option.label.toLowerCase().includes(filter.toLowerCase())
+                );
+
+                filteredOptions.forEach(option => {
+                    const optionEl = document.createElement('div');
+                    optionEl.className = 'tab-item tab-item-inactive flex items-center p-2';
+                    optionEl.innerHTML = `
+                        <input type="checkbox" class="multiselect-checkbox"
+                               data-value="${option.value}"
+                               ${this.selectedValues.includes(option.value) ? 'checked' : ''}>
+                        <span>${option.label}</span>
+                    `;
+
+                    optionEl.querySelector('input').addEventListener('change', (e) => {
+                        e.stopPropagation();
+                        this.toggleSelection(option.value, e.target.checked);
+                    });
+
+                    optionEl.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (e.target.tagName !== 'INPUT') {
+                            const checkbox = optionEl.querySelector('input');
+                            checkbox.checked = !checkbox.checked;
+                            const ev = new Event('change', { bubbles: false });
+                            checkbox.dispatchEvent(ev);
+                        }
+                    });
+
+                    optionsContainer.appendChild(optionEl);
+                });
+
+                this.updateSelectAllStatus();
+            }
+
+            filterOptions(keyword) {
+                this.renderOptions(keyword);
+            }
+
+            toggleSelection(value, isChecked) {
+                if (isChecked && !this.selectedValues.includes(value)) {
+                    this.selectedValues.push(value);
+                } else if (!isChecked && this.selectedValues.includes(value)) {
+                    this.selectedValues = this.selectedValues.filter(v => v !== value);
+                }
+
+                this.updateDisplay();
+                this.updateTags();
+                this.updateSelectAllStatus();
+
+                if (this.onChange) {
+                    this.onChange([...this.selectedValues]);
+                }
+
+                this.openDropdown();
+            }
+
+            toggleSelectAll() {
+                const selectAllEl = document.getElementById(this.selectAllId);
+                if (!selectAllEl) return;
+                let checkbox = selectAllEl.querySelector('input[type="checkbox"]');
+
+                if (!checkbox) {
+                    this.updateSelectAllStatus();
+                    checkbox = selectAllEl.querySelector('input[type="checkbox"]');
+                    if (!checkbox) return;
+                }
+
+                checkbox.checked = !checkbox.checked;
+                const event = new Event('change', { bubbles: false });
+                checkbox.dispatchEvent(event);
+            }
+
+            updateSelectAllStatus() {
+                const optionsContainer = document.getElementById(this.optionsId);
+                const selectAllEl = document.getElementById(this.selectAllId);
+                if (!optionsContainer || !selectAllEl) return;
+
+                const checkboxes = Array.from(optionsContainer.querySelectorAll('input[type="checkbox"]'))
+                    .filter(cb => !cb.closest('#' + this.selectAllId));
+
+                const visibleOptionsCount = checkboxes.length;
+                const selectedCount = checkboxes.filter(cb => cb.checked).length;
+
+                let checkbox = selectAllEl.querySelector('input[type="checkbox"]');
+
+                if (!checkbox) {
+                    selectAllEl.innerHTML = '';
+
+                    checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.className = 'mr-1';
+                    checkbox.id = `${this.selectAllId}-checkbox`;
+
+                    const label = document.createElement('span');
+                    label.textContent = '全选';
+
+                    selectAllEl.appendChild(checkbox);
+                    selectAllEl.appendChild(label);
+
+                    checkbox.addEventListener('change', (e) => {
+                        e.stopPropagation();
+                        const optionCheckboxes = Array.from(optionsContainer.querySelectorAll('input[type="checkbox"]'))
+                            .filter(cb => !cb.closest('#' + this.selectAllId));
+
+                        if (e.target.checked) {
+                            this.selectedValues = optionCheckboxes
+                                .map(cb => cb.dataset.value)
+                                .filter(Boolean);
+
+                            optionCheckboxes.forEach(cb => cb.checked = true);
+                        } else {
+                            this.selectedValues = [];
+                            optionCheckboxes.forEach(cb => cb.checked = false);
+                        }
+
+                        this.updateDisplay();
+                        this.updateTags();
+
+                        if (this.onChange) this.onChange([...this.selectedValues]);
+                        this.openDropdown();
+                    });
+                }
+
+                const isAllSelected = visibleOptionsCount > 0 && selectedCount === visibleOptionsCount;
+                checkbox.checked = isAllSelected;
+            }
+
+            updateDisplay() {
+                const displayEl = document.getElementById(this.displayId);
+                if (!displayEl) return;
+                if (this.selectedValues.length === 0) {
+                    displayEl.textContent = '请选择';
+                } else if (this.selectedValues.length === 1) {
+                    const selectedOption = this.allOptions.find(opt => opt.value === this.selectedValues[0]);
+                    displayEl.textContent = selectedOption ? selectedOption.label : '已选择';
+                } else if (this.selectedValues.length === this.allOptions.length) {
+                    displayEl.textContent = '全部已选择';
+                } else {
+                    displayEl.textContent = `已选择 ${this.selectedValues.length} 项`;
+                }
+
+                const hiddenInput = document.getElementById(this.valueId);
+                if (hiddenInput) hiddenInput.value = JSON.stringify(this.selectedValues);
+            }
+
+            updateTags() {
+                const tagsContainer = document.getElementById(this.tagsId);
+                if (!tagsContainer) return;
+                tagsContainer.innerHTML = '';
+
+                if (this.selectedValues.length > 5) {
+                    const tagEl = document.createElement('div');
+                    tagEl.className = 'selected-tag';
+                    tagEl.innerHTML = `已选择 ${this.selectedValues.length} 项 <span class="tag-remove" data-clear="all">×</span>`;
+
+                    tagEl.querySelector('.tag-remove').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.clearSelection();
+                    });
+
+                    tagsContainer.appendChild(tagEl);
+                    return;
+                }
+
+                this.selectedValues.forEach(value => {
+                    const option = this.allOptions.find(opt => opt.value === value);
+                    if (!option) return;
+
+                    const tagEl = document.createElement('div');
+                    tagEl.className = 'selected-tag';
+                    tagEl.innerHTML = `
+                        ${option.label}
+                        <span class="tag-remove" data-value="${value}">×</span>
+                    `;
+
+                    tagEl.querySelector('.tag-remove').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.toggleSelection(e.target.dataset.value, false);
+                    });
+
+                    tagsContainer.appendChild(tagEl);
+                });
+            }
+
+            clearSelection() {
+                this.selectedValues = [];
+                this.updateDisplay();
+                this.updateTags();
+                this.updateSelectAllStatus();
+                const searchInput = document.getElementById(this.searchId);
+                this.renderOptions(searchInput ? searchInput.value : '');
+                if (this.onChange) this.onChange([]);
+            }
+
+            toggleDropdown() {
+                const optionsContainer = document.getElementById(this.optionsId);
+                if (!optionsContainer) return;
+                optionsContainer.classList.toggle('hidden');
+            }
+
+            closeDropdown() {
+                const optionsContainer = document.getElementById(this.optionsId);
+                if (!optionsContainer) return;
+                optionsContainer.classList.add('hidden');
+            }
+
+            openDropdown() {
+                const optionsContainer = document.getElementById(this.optionsId);
+                if (!optionsContainer) return;
+                optionsContainer.classList.remove('hidden');
+            }
+
+            getSelectedValues() {
+                return [...this.selectedValues];
+            }
+        }
+
+        // 下载工具函数（通用）
+        function downloadFile(filename, content, mimeType = 'application/octet-stream') {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 500);
+        }
+
+        function chartToCSV(chart) {
+            if (!chart) return '';
+            const labels = chart.data.labels || [];
+            const datasets = chart.data.datasets || [];
+
+            const header = ['分组', ...datasets.map(ds => ds.label || '')];
+            const rows = [header];
+
+            for (let i = 0; i < labels.length; i++) {
+                const row = [labels[i]];
+                for (let j = 0; j < datasets.length; j++) {
+                    const value = datasets[j].data && typeof datasets[j].data[i] !== 'undefined'
+                        ? datasets[j].data[i]
+                        : '';
+                    row.push(value);
+                }
+                rows.push(row);
+            }
+
+            const csvLines = rows.map(cols => cols.map(cell => {
+                if (cell === null || typeof cell === 'undefined') return '';
+                const cellStr = String(cell);
+                if (/[",\n]/.test(cellStr)) {
+                    return `"${cellStr.replace(/"/g, '""')}"`;
+                }
+                return cellStr;
+            }).join(','));
+
+            return '\uFEFF' + csvLines.join('\n');
+        }
+
+        // 主应用类
+        class TrendAnalysisApp {
+            constructor() {
+                this.db = new SatelliteDB();
+                this.cycleEngine = new CycleRuleEngine();
+                this.chartGenerator = new ChartGenerator();
+
+                this.initMultiSelects();
+
+                this.data = null;
+                this.filteredData = null;
+                this.rawData = null;
+                this.filterValues = {
+                    '测站名称': [],
+                    '客户名称': [],
+                    '卫星名称': [],
+                    '任务结果状态': [],
+                    '任务类型': []
+                };
+
+                this.init();
+            }
+
+            initMultiSelects() {
+                this.stationSelect = new MultiSelectDropdown(
+                    'stationDropdown', 'stationOptions', 'stationDisplay',
+                    'stationValue', 'stationTags', 'stationSearch', 'selectAllStations',
+                    (values) => this.updateSatelliteOptions()
+                );
+
+                this.customerSelect = new MultiSelectDropdown(
+                    'customerDropdown', 'customerOptions', 'customerDisplay',
+                    'customerValue', 'customerTags', 'customerSearch', 'selectAllCustomers',
+                    (values) => this.updateSatelliteOptions()
+                );
+
+                this.satelliteSelect = new MultiSelectDropdown(
+                    'satelliteDropdown', 'satelliteOptions', 'satelliteDisplay',
+                    'satelliteValue', 'satelliteTags', 'satelliteSearch', 'selectAllSatellites',
+                    (values) => this.updateStatusOptions()
+                );
+
+                this.statusSelect = new MultiSelectDropdown(
+                    'statusDropdown', 'statusOptions', 'statusDisplay',
+                    'statusValue', 'statusTags', 'statusSearch', 'selectAllStatuses',
+                    (values) => this.updateTypeOptions()
+                );
+
+                this.typeSelect = new MultiSelectDropdown(
+                    'typeDropdown', 'typeOptions', 'typeDisplay',
+                    'typeValue', 'typeTags', 'typeSearch', 'selectAllTypes'
+                );
+            }
+
+            async init() {
+                this.setupEventListeners();
+                await this.loadData();
+                this.addDebugButtons();
+                this.bindDownloadButtons();
+            }
+
+            setupEventListeners() {
+                const applyBtn = document.getElementById('applyFilters');
+                if (applyBtn) applyBtn.addEventListener('click', () => this.applyFilters());
+                const resetBtn = document.getElementById('resetFilters');
+                if (resetBtn) resetBtn.addEventListener('click', () => this.resetFilters());
+                const configBtn = document.getElementById('configGroupingBtn');
+                if (configBtn) configBtn.addEventListener('click', () => this.openCycleConfigModal());
+                const closeModalBtn = document.getElementById('closeConfigModal');
+                if (closeModalBtn) closeModalBtn.addEventListener('click', () => this.closeCycleConfigModal());
+                const saveConfigBtn = document.getElementById('saveGroupingConfig');
+                if (saveConfigBtn) saveConfigBtn.addEventListener('click', () => this.saveCycleConfig());
+                const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+                if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', () => {
+                    document.getElementById('mobileMenu').classList.toggle('hidden');
+                });
+
+                const dayStartEl = document.getElementById('dayStart');
+                if (dayStartEl) dayStartEl.addEventListener('change', (e) => {
+                    document.getElementById('dayStartDisplay').textContent = e.target.value;
+                    document.getElementById('dayEndDisplay').textContent = e.target.value;
+                });
+            }
+
+            openCycleConfigModal() {
+                const modal = document.getElementById('groupingConfigModal');
+                const modalContent = document.getElementById('modalContent');
+
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modalContent.classList.remove('scale-95', 'opacity-0');
+                    modalContent.classList.add('scale-100', 'opacity-100');
+                }, 10);
+
+                document.getElementById('dayStart').value = this.cycleEngine.config.day.start;
+                document.getElementById('dayStartDisplay').textContent = this.cycleEngine.config.day.start;
+                document.getElementById('dayEndDisplay').textContent = this.cycleEngine.config.day.start;
+
+                document.getElementById('weekStartDay').value = this.cycleEngine.config.week.startDay;
+                document.getElementById('weekStartTime').value = this.cycleEngine.config.week.startTime;
+
+                document.getElementById('monthStartDate').value = this.cycleEngine.config.month.startDate;
+                document.getElementById('monthStartTime').value = this.cycleEngine.config.month.startTime;
+
+                document.getElementById('quarterStartMonth').value = this.cycleEngine.config.quarter.startMonth;
+                document.getElementById('quarterStartTime').value = this.cycleEngine.config.quarter.startTime;
+            }
+
+            closeCycleConfigModal() {
+                const modal = document.getElementById('groupingConfigModal');
+                const modalContent = document.getElementById('modalContent');
+
+                modalContent.classList.remove('scale-100', 'opacity-100');
+                modalContent.classList.add('scale-95', 'opacity-0');
+
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                }, 300);
+            }
+
+            saveCycleConfig() {
+                const newConfig = {
+                    day: {
+                        start: document.getElementById('dayStart').value
+                    },
+                    week: {
+                        startDay: parseInt(document.getElementById('weekStartDay').value),
+                        startTime: document.getElementById('weekStartTime').value
+                    },
+                    month: {
+                        startDate: parseInt(document.getElementById('monthStartDate').value),
+                        startTime: document.getElementById('monthStartTime').value
+                    },
+                    quarter: {
+                        startMonth: parseInt(document.getElementById('quarterStartMonth').value),
+                        startTime: document.getElementById('quarterStartTime').value
+                    }
+                };
+
+                this.cycleEngine.updateConfig(newConfig);
+                this.closeCycleConfigModal();
+
+                if (this.filteredData) {
+                    this.applyFilters();
+                }
+            }
+
+            async loadData() {
+                const dbLoading = document.getElementById('dbLoading');
+                if (dbLoading) dbLoading.classList.remove('hidden');
+
+                try {
+                    if (!await this.db.hasData()) {
+                        if (dbLoading) dbLoading.classList.add('hidden');
+                        document.getElementById('noDataAlert').classList.remove('hidden');
+                        return;
+                    }
+
+                    const rawData = await this.db.getAllDataWithProgress((p) => {
+                        document.getElementById('loadingProgress').style.width = `${p}%`;
+                    });
+
+                    this.rawData = rawData;
+                    this.data = rawData[0]?.data || [];
+
+                    this.extractFilterValues();
+                    this.initializeFilters();
+
+                    if (dbLoading) dbLoading.classList.add('hidden');
+                    document.getElementById('filterSection').classList.remove('hidden');
+                    document.getElementById('chartsSection').classList.remove('hidden');
+
+                    this.updateDebugInfo();
+
+                } catch (error) {
+                    if (dbLoading) dbLoading.classList.add('hidden');
+                    console.error('加载数据失败:', error);
+                }
+            }
+
+            extractFilterValues() {
+                Object.keys(this.filterValues).forEach(key => this.filterValues[key] = []);
+
+                if (!this.data || !this.data.length) return;
+
+                this.data.forEach(item => {
+                    Object.keys(this.filterValues).forEach(systemField => {
+                        const dataField = FIELD_MAPPING[systemField];
+                        if (!dataField) return;
+
+                        const value = (item[dataField] || '').toString().trim();
+                        if (value && !this.filterValues[systemField].includes(value)) {
+                            this.filterValues[systemField].push(value);
+                        }
+                    });
+                });
+
+                Object.keys(this.filterValues).forEach(key => {
+                    this.filterValues[key].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+                });
+            }
+
+            initializeFilters() {
+                const stationOptions = this.filterValues['测站名称'].map(station => ({ value: station, label: station }));
+                this.stationSelect.setOptions(stationOptions);
+
+                const customerOptions = this.filterValues['客户名称'].map(customer => ({ value: customer, label: customer }));
+                this.customerSelect.setOptions(customerOptions);
+
+                if (this.filterValues['客户名称'].length === 0 && this.data.some(item => item[FIELD_MAPPING['客户名称']])) {
+                    document.getElementById('dataStructureAlert').classList.remove('hidden');
+                    document.getElementById('structureMsg').textContent =
+                        `已自动映射字段: "${FIELD_MAPPING['客户名称']}" → "客户名称"`;
+                }
+            }
+
+            updateSatelliteOptions() {
+                this.resetSubsequentFilters('satellite');
+
+                const stationValues = this.stationSelect.getSelectedValues();
+                const customerValues = this.customerSelect.getSelectedValues();
+
+                if (!stationValues.length && !customerValues.length) {
+                    document.getElementById('satelliteDisplay').textContent = '请先选择测站或客户';
+                    return;
+                }
+
+                const filteredSatellites = [...new Set(
+                    this.data
+                        .filter(item => {
+                            const matchesStation = !stationValues.length ||
+                                                  stationValues.includes((item[FIELD_MAPPING['测站名称']] || '').toString().trim());
+                            const matchesCustomer = !customerValues.length ||
+                                                  customerValues.includes((item[FIELD_MAPPING['客户名称']] || '').toString().trim());
+                            return matchesStation && matchesCustomer;
+                        })
+                        .map(item => (item[FIELD_MAPPING['卫星名称']] || '').toString().trim())
+                        .filter(Boolean)
+                )].sort();
+
+                const satelliteOptions = filteredSatellites.map(satellite => ({ value: satellite, label: satellite }));
+                this.satelliteSelect.setOptions(satelliteOptions);
+                document.getElementById('satelliteDisplay').textContent = '请选择卫星';
+            }
+
+            updateStatusOptions() {
+                this.resetSubsequentFilters('status');
+
+                const satelliteValues = this.satelliteSelect.getSelectedValues();
+                if (!satelliteValues.length) return;
+
+                const stationValues = this.stationSelect.getSelectedValues();
+                const customerValues = this.customerSelect.getSelectedValues();
+
+                const filteredStatuses = [...new Set(
+                    this.data
+                        .filter(item => !stationValues.length || stationValues.includes((item[FIELD_MAPPING['测站名称']] || '').toString().trim()))
+                        .filter(item => !customerValues.length || customerValues.includes((item[FIELD_MAPPING['客户名称']] || '').toString().trim()))
+                        .filter(item => satelliteValues.includes((item[FIELD_MAPPING['卫星名称']] || '').toString().trim()))
+                        .map(item => (item[FIELD_MAPPING['任务结果状态']] || '').toString().trim())
+                        .filter(Boolean)
+                )].sort();
+
+                const statusOptions = filteredStatuses.map(status => ({ value: status, label: status }));
+                this.statusSelect.setOptions(statusOptions);
+                document.getElementById('statusDisplay').textContent = '请选择任务状态';
+            }
+
+            updateTypeOptions() {
+                this.resetSubsequentFilters('type');
+
+                const statusValues = this.statusSelect.getSelectedValues();
+                if (!statusValues.length) return;
+
+                const stationValues = this.stationSelect.getSelectedValues();
+                const customerValues = this.customerSelect.getSelectedValues();
+                const satelliteValues = this.satelliteSelect.getSelectedValues();
+
+                const filteredTypes = [...new Set(
+                    this.data
+                        .filter(item => !stationValues.length || stationValues.includes((item[FIELD_MAPPING['测站名称']] || '').toString().trim()))
+                        .filter(item => !customerValues.length || customerValues.includes((item[FIELD_MAPPING['客户名称']] || '').toString().trim()))
+                        .filter(item => !satelliteValues.length || satelliteValues.includes((item[FIELD_MAPPING['卫星名称']] || '').toString().trim()))
+                        .filter(item => statusValues.includes((item[FIELD_MAPPING['任务结果状态']] || '').toString().trim()))
+                        .map(item => (item[FIELD_MAPPING['任务类型']] || '').toString().trim())
+                        .filter(Boolean)
+                )].sort();
+
+                const typeOptions = filteredTypes.map(type => ({ value: type, label: type }));
+                this.typeSelect.setOptions(typeOptions);
+                document.getElementById('typeDisplay').textContent = '请选择任务类型';
+            }
+
+            resetSubsequentFilters(after = '') {
+                const filterOrder = ['station', 'customer', 'satellite', 'status', 'type'];
+                const startIndex = after ? filterOrder.indexOf(after) + 1 : 1;
+
+                for (let i = startIndex; i < filterOrder.length; i++) {
+                    const filterType = filterOrder[i];
+                    const select = this[`${filterType}Select`];
+                    if (select) select.clearSelection();
+                }
+            }
+
+            // Helper: 将各种时间值按"文件时间"(本地语义)解析为 Date 对象
+            parseToLocalDate(value) {
+                if (!value && value !== 0) return null;
+                if (value instanceof Date) return new Date(
+                    value.getFullYear(), value.getMonth(), value.getDate(),
+                    value.getHours(), value.getMinutes(), value.getSeconds(), value.getMilliseconds()
+                );
+
+                // 处理 Excel 数字序列（如果有）
+                if (typeof value === 'number') {
+                    // Excel序列号 -> JS 时间（不做时区偏移）
+                    try {
+                        return new Date((value - 25569) * 86400000);
+                    } catch (e) {
+                        return new Date(value);
+                    }
+                }
+
+                if (typeof value === 'string') {
+                    const s = value.trim();
+                    // YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS
+                    const dateTimeMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}):(\d{2}))?$/);
+                    if (dateTimeMatch) {
+                        const y = parseInt(dateTimeMatch[1], 10);
+                        const m = parseInt(dateTimeMatch[2], 10) - 1;
+                        const d = parseInt(dateTimeMatch[3], 10);
+                        const hh = parseInt(dateTimeMatch[4] || '0', 10);
+                        const mm = parseInt(dateTimeMatch[5] || '0', 10);
+                        const ss = parseInt(dateTimeMatch[6] || '0', 10);
+                        return new Date(y, m, d, hh, mm, ss, 0);
+                    }
+
+                    // 其他格式，fallback 到 Date 构造（有可能走到 UTC，尽量避免）
+                    const fallback = new Date(s);
+                    if (!isNaN(fallback.getTime())) return fallback;
+
+                    return null;
+                }
+
+                // fallback
+                const fallback = new Date(value);
+                return isNaN(fallback.getTime()) ? null : fallback;
+            }
+
+            // 将 start/end 的 YYYY-MM-DD 输入映射到基于周期规则的实际边界（start inclusive, end inclusive）
+            computeDateRangeForGroup(groupType, startDateStr, endDateStr) {
+                let startBound = null;
+                let endBound = null;
+
+                const makeMidday = (dateStr) => {
+                    if (!dateStr) return null;
+                    const parts = dateStr.split('-').map(Number);
+                    return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0);
+                };
+
+                try {
+                    if (startDateStr) {
+                        const midStart = makeMidday(startDateStr);
+                        const gStart = this.cycleEngine.getDayGroup
+                            ? (groupType === 'day' ? this.cycleEngine.getDayGroup(midStart) : this.cycleEngine.getGroup ? this.cycleEngine.getGroup(midStart, groupType) : null)
+                            : (this.cycleEngine.getGroup ? this.cycleEngine.getGroup(midStart, groupType) : null);
+                        if (gStart) startBound = gStart.rangeStart;
+                    }
+
+                    if (endDateStr) {
+                        const midEnd = makeMidday(endDateStr);
+                        const gEnd = this.cycleEngine.getDayGroup
+                            ? (groupType === 'day' ? this.cycleEngine.getDayGroup(midEnd) : this.cycleEngine.getGroup ? this.cycleEngine.getGroup(midEnd, groupType) : null)
+                            : (this.cycleEngine.getGroup ? this.cycleEngine.getGroup(midEnd, groupType) : null);
+
+                        if (gEnd) {
+                            // inclusive end bound -> rangeEnd - 1ms
+                            endBound = new Date(gEnd.rangeEnd.getTime() - 1);
+                        }
+                    }
+                } catch (err) {
+                    console.warn('computeDateRangeForGroup failed, fallback to local day bounds', err);
+                    if (startDateStr) startBound = this.parseToLocalDate(`${startDateStr} 00:00:00`);
+                    if (endDateStr) endBound = this.parseToLocalDate(`${endDateStr} 23:59:59`);
+                }
+
+                return { startDate: startBound, endDate: endBound };
+            }
+
+            // 应用筛选（修复时间轴范围问题）
+            applyFilters() {
+                if (!this.data) return;
+
+                const stationValues = this.stationSelect.getSelectedValues();
+                const customerValues = this.customerSelect.getSelectedValues();
+                const satelliteValues = this.satelliteSelect.getSelectedValues();
+                const statusValues = this.statusSelect.getSelectedValues();
+                const typeValues = this.typeSelect.getSelectedValues();
+
+                // 先计算周期性范围边界（将 YYYY-MM-DD 映射到对应周期的 rangeStart/rangeEnd）
+                const groupBy = document.getElementById('groupBy').value;
+                const startInput = document.getElementById('startDate').value;
+                const endInput = document.getElementById('endDate').value;
+                const range = this.computeDateRangeForGroup(groupBy, startInput, endInput);
+                const startBound = range.startDate; // may be null
+                const endBound = range.endDate; // may be null (inclusive)
+
+                // 为了避免浏览器将 YYYY-MM-DD 当成 UTC 导致偏移，我们先把数据副本中的开始时间解析为本地 Date
+                const normalizedField = FIELD_MAPPING['开始时间'];
+                const dataForFiltering = this.data.map(item => {
+                    const newItem = Object.assign({}, item);
+                    newItem[normalizedField] = this.parseToLocalDate(item[normalizedField]);
+                    return newItem;
+                });
+
+                // 过滤（所有条件为 "且"）
+                this.filteredData = dataForFiltering.filter(item => {
+                    const itemDate = item[normalizedField];
+                    if (!itemDate) return false;
+
+                    // 时间范围比较（使用文件时间语义）
+                    if (startBound && itemDate < startBound) return false;
+                    if (endBound && itemDate > endBound) return false;
+
+                    // 测站
+                    if (stationValues.length && !stationValues.includes((item[FIELD_MAPPING['测站名称']] || '').toString().trim())) {
+                        return false;
+                    }
+
+                    // 客户
+                    if (customerValues.length && !customerValues.includes((item[FIELD_MAPPING['客户名称']] || '').toString().trim())) {
+                        return false;
+                    }
+
+                    // 卫星
+                    if (satelliteValues.length && !satelliteValues.includes((item[FIELD_MAPPING['卫星名称']] || '').toString().trim())) {
+                        return false;
+                    }
+
+                    // 状态
+                    if (statusValues.length && !statusValues.includes((item[FIELD_MAPPING['任务结果状态']] || '').toString().trim())) {
+                        return false;
+                    }
+
+                    // 类型
+                    if (typeValues.length && !typeValues.includes((item[FIELD_MAPPING['任务类型']] || '').toString().trim())) {
+                        return false;
+                    }
+
+                    return true;
+                });
+
+                // 生成图表
+                this.generateAllCharts(groupBy);
+            }
+
+            generateAllCharts(groupBy) {
+                if (!this.filteredData || !this.filteredData.length) {
+                    this.clearAllCharts();
+                    return;
+                }
+
+                this.generateCategoryChart('stationChart', '测站名称趋势分析', '测站名称', groupBy);
+                this.generateCategoryChart('customerChart', '客户名称趋势分析', '客户名称', groupBy);
+                this.generateCategoryChart('satelliteChart', '卫星名称趋势分析', '卫星名称', groupBy);
+                this.generateCategoryChart('statusChart', '任务结果状态趋势分析', '任务结果状态', groupBy);
+                this.generateCategoryChart('typeChart', '任务类型趋势分析', '任务类型', groupBy);
+            }
+
+            generateCategoryChart(chartId, title, categoryField, groupBy) {
+                // 使用已经标准化（本地 Date）的字段进行分组：groupByStartTime 会用 item[FIELD_MAPPING['开始时间']] 的值（现在为 Date）
+                const groupedResult = this.cycleEngine.groupByStartTime(
+                    this.filteredData,
+                    groupBy,
+                    '计划ID',
+                    FIELD_MAPPING['开始时间']
+                );
+
+                if (!groupedResult.sortedKeys.length) {
+                    const emptyEl = document.getElementById(`${chartId}Empty`);
+                    if (emptyEl) emptyEl.classList.remove('hidden');
+                    this.chartGenerator.destroyChart(chartId);
+                    return;
+                }
+
+                const categories = [...new Set(
+                    this.filteredData.map(item => (item[FIELD_MAPPING[categoryField]] || '').toString().trim()).filter(Boolean)
+                )];
+
+                const xLabels = groupedResult.sortedKeys.map(key =>
+                    groupedResult.groupMetadata[key].label
+                );
+
+                const datasets = categories.map(category => ({
+                    label: category,
+                    data: groupedResult.sortedKeys.map(key =>
+                        groupedResult.groups[key].filter(item =>
+                            (item[FIELD_MAPPING[categoryField]] || '').toString().trim() === category
+                        ).length
+                    )
+                }));
+
+                const chart = this.chartGenerator.generateTrendChart(chartId, title, xLabels, datasets);
+                return chart;
+            }
+
+            resetFilters() {
+                this.stationSelect.clearSelection();
+                this.customerSelect.clearSelection();
+                this.satelliteSelect.clearSelection();
+                this.statusSelect.clearSelection();
+                this.typeSelect.clearSelection();
+
+                document.getElementById('startDate').value = '';
+                document.getElementById('endDate').value = '';
+
+                this.clearAllCharts();
+            }
+
+            clearAllCharts() {
+                ['stationChart', 'customerChart', 'satelliteChart', 'statusChart', 'typeChart'].forEach(id => {
+                    this.chartGenerator.destroyChart(id);
+                    const emptyEl = document.getElementById(`${id}Empty`);
+                    if (emptyEl) emptyEl.classList.remove('hidden');
+                });
+            }
+
+            updateDebugInfo() {
+                const debugContent = document.getElementById('debugContent');
+                let info = "字段映射配置:\n";
+                Object.entries(FIELD_MAPPING).forEach(([sys, data]) => {
+                    info += `  系统字段"${sys}" → 数据字段"${data}"\n`;
+                });
+
+                info += "\n筛选字段数据:\n";
+                Object.entries(this.filterValues).forEach(([field, values]) => {
+                    info += `  ${field}: ${values.length} 项\n`;
+                });
+
+                debugContent.textContent = info;
+            }
+
+            addDebugButtons() {
+                const debugInfo = document.getElementById('debugInfo');
+                const toggleBtn = document.createElement('button');
+                toggleBtn.className = 'absolute top-4 right-4 text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded';
+                toggleBtn.textContent = '显示调试信息';
+                toggleBtn.addEventListener('click', () => {
+                    debugInfo.classList.toggle('hidden');
+                    toggleBtn.textContent = debugInfo.classList.contains('hidden') ? '显示调试信息' : '隐藏调试信息';
+                });
+
+                document.querySelector('main').style.position = 'relative';
+                document.querySelector('main').appendChild(toggleBtn);
+            }
+
+            bindDownloadButtons() {
+                document.addEventListener('click', (e) => {
+                    const btn = e.target.closest && e.target.closest('.chart-download-btn');
+                    if (!btn) return;
+
+                    const chartId = btn.getAttribute('data-chart');
+                    const type = btn.getAttribute('data-type');
+
+                    const chart = this.chartGenerator.charts[chartId];
+                    if (!chart) {
+                        alert('当前图表无数据或尚未生成，请先应用筛选生成图表后再下载。');
+                        return;
+                    }
+
+                    if (type === 'image') {
+                        try {
+                            const imgUrl = chart.toBase64Image();
+                            const a = document.createElement('a');
+                            a.href = imgUrl;
+                            const now = new Date();
+                            const ts = now.toISOString().replace(/[:.]/g, '-');
+                            a.download = `${chartId}-${ts}.png`;
+                            document.body.appendChild(a);
+                            a.click();
+                            setTimeout(() => document.body.removeChild(a), 300);
+                        } catch (err) {
+                            console.error('导出图片失败', err);
+                            alert('导出图片失败，请检查浏览器支持或数据量是否过大。');
+                        }
+                    } else if (type === 'csv') {
+                        try {
+                            const csv = chartToCSV(chart);
+                            const now = new Date();
+                            const ts = now.toISOString().replace(/[:.]/g, '-');
+                            downloadFile(`${chartId}-${ts}.csv`, csv, 'text/csv;charset=utf-8;');
+                        } catch (err) {
+                            console.error('导出 CSV 失败', err);
+                            alert('导出 CSV 失败，请查看控制台错误信息。');
+                        }
+                    }
+                });
+            }
+        }
+
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', () => {
+            window.trendApp = new TrendAnalysisApp();
+        });
+    </script>
+</body>
+</html>

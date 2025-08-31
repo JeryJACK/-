@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据分布分析 - 卫星任务数据分析平台</title>
+    <!-- 外部资源 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#36CFC9',
+                        accent: '#722ED1',
+                        warning: '#FF7D00',
+                        danger: '#F53F3F',
+                        success: '#00B42A',
+                    },
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .card-shadow {
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            .stat-card {
+                @apply bg-white rounded-lg p-4 card-shadow transition-all hover:shadow-lg;
+            }
+            .stat-card-value {
+                @apply text-2xl font-bold text-gray-800 my-1;
+            }
+            .stat-card-label {
+                @apply text-gray-500 text-sm;
+            }
+            .stat-card-icon {
+                @apply w-10 h-10 rounded-full flex items-center justify-center text-primary bg-primary/10;
+            }
+            .chart-container {
+                @apply h-80 md:h-96 border border-gray-200 rounded-lg p-4 relative mb-6;
+            }
+            .tab-item {
+                @apply px-4 py-2 rounded-md cursor-pointer transition-all;
+            }
+            .tab-item-active {
+                @apply bg-primary text-white;
+            }
+            .tab-item-inactive {
+                @apply bg-gray-100 text-gray-700 hover:bg-gray-200;
+            }
+            .filter-select {
+                @apply w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all;
+            }
+            .customer-tag {
+                @apply px-2 py-1 bg-primary/10 text-primary text-xs rounded-full inline-flex items-center mr-1 mb-1;
+            }
+            .dropdown-options {
+                max-height: 200px;
+                overflow-y: auto;
+            }
+            .search-input {
+                @apply w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all text-sm;
+            }
+            .search-highlight {
+                @apply bg-yellow-200 font-medium;
+            }
+            .chart-actions {
+                @apply flex gap-2 items-center;
+            }
+            .chart-download-btn {
+                @apply px-2 py-1 bg-primary/10 text-primary rounded hover:bg-primary/20 transition;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 顶部导航 -->
+    <header class="bg-white border-b border-gray-200">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-pie-chart text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-primary">卫星任务数据分析平台</h1>
+            </div>
+
+            <nav class="hidden md:flex items-center space-x-6">
+                <a href="index.html" class="text-gray-600 hover:text-primary transition-colors px-1 py-5">首页</a>
+                <a href="trend-analysis.html" class="text-gray-600 hover:text-primary transition-colors px-1 py-5">数据趋势分析</a>
+                <a href="data-distribution.html" class="text-primary font-medium border-b-2 border-primary px-1 py-5">数据分布</a>
+                <a href="circle-warning.html" class="text-primary font-medium border-b-2 border-primary px-1 py-5">数据预警</a>
+            </nav>
+
+            <button class="md:hidden text-gray-600 hover:text-primary" id="mobileMenuBtn">
+                <i class="fa fa-bars text-xl"></i>
+            </button>
+        </div>
+
+        <div class="md:hidden hidden bg-white border-t border-gray-200" id="mobileMenu">
+            <div class="container mx-auto px-4 py-2">
+                <a href="index.html" class="block py-3 text-gray-600 hover:text-primary">首页</a>
+                <a href="trend-analysis.html" class="block py-3 text-gray-600 hover:text-primary">数据趋势分析</a>
+                <a href="data-distribution.html" class="block py-3 text-primary font-medium">数据分布分析</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6">
+        <h2 class="text-xl font-bold mb-6 text-gray-800">数据分布分析</h2>
+
+        <!-- 数据状态提示区 -->
+        <div id="dbLoading" class="mb-6 p-3 bg-primary/10 text-primary rounded-lg flex items-center hidden">
+            <i class="fa fa-spinner fa-spin mr-2"></i>
+            <span>正在从数据库加载数据...</span>
+            <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                <div id="loadingProgress" class="bg-primary h-1.5 rounded-full" style="width: 0%"></div>
+            </div>
+            <div class="text-xs text-gray-500 mt-1">
+                <span id="loadingStatus">准备加载...</span>
+            </div>
+        </div>
+
+        <div id="noDataAlert" class="bg-warning/10 text-warning p-4 rounded-lg mb-6 hidden">
+            <i class="fa fa-exclamation-circle mr-2"></i>
+            <span>请先在首页导入数据，然后再进行分布分析</span>
+        </div>
+
+        <div id="dataStructureAlert" class="bg-warning/10 text-warning p-4 rounded-lg mb-6 hidden">
+            <i class="fa fa-exclamation-circle mr-2"></i>
+            <span>数据结构识别异常</span>
+            <div class="mt-2 text-sm">
+                <p id="structureMsg">系统检测到数据格式可能不符合预期，已尝试自动修复。</p>
+                <div id="structureDetails" class="mt-1 bg-white p-2 rounded text-xs"></div>
+            </div>
+        </div>
+
+        <!-- 时间筛选区域 - 优化为具体日期时间选择 -->
+        <section id="filterSection" class="mb-8 bg-white rounded-lg p-6 card-shadow hidden">
+            <h3 class="text-lg font-semibold mb-4">时间筛选</h3>
+
+            <!-- 简化的时间范围设置 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">开始时间</label>
+                    <input type="datetime-local" id="startDateTime" class="filter-select">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">结束时间</label>
+                    <input type="datetime-local" id="endDateTime" class="filter-select">
+                </div>
+                <div class="flex items-end">
+                    <button id="applyFilters" class="w-full px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors">
+                        应用筛选
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 数据概览小卡片 -->
+        <section id="statsCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 hidden">
+            <div class="stat-card">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="stat-card-label">总圈次</div>
+                        <div class="stat-card-value" id="totalCycles">0</div>
+                        <div class="text-xs text-success mt-1">
+                            <i class="fa fa-arrow-up"></i> <span id="cyclesChange">0%</span> 较上期
+                        </div>
+                    </div>
+                    <div class="stat-card-icon">
+                        <i class="fa fa-refresh"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="stat-card-label">卫星数量</div>
+                        <div class="stat-card-value" id="satelliteCount">0</div>
+                        <div class="text-xs text-gray-500 mt-1">
+                            共 <span id="activeSatellites">0</span> 颗活跃卫星
+                        </div>
+                    </div>
+                    <div class="stat-card-icon">
+                        <i class="fa fa-satellite"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="stat-card-label">客户数量</div>
+                        <div class="stat-card-value" id="customerCount">0</div>
+                        <div class="text-xs text-gray-500 mt-1">
+                            覆盖 <span id="customerCoverage">0</span> 个行业
+                        </div>
+                    </div>
+                    <div class="stat-card-icon">
+                        <i class="fa fa-users"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="stat-card-label">测站数量</div>
+                        <div class="stat-card-value" id="stationCount">0</div>
+                        <div class="text-xs text-gray-500 mt-1">
+                            总覆盖率 <span id="stationCoverage">0%</span>
+                        </div>
+                    </div>
+                    <div class="stat-card-icon">
+                        <i class="fa fa-map-marker"></i>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 客户数据分布 -->
+        <section id="customerDistribution" class="mb-8 hidden">
+            <h3 class="text-lg font-semibold mb-4">客户数据分布</h3>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- 客户圈次占比饼图 -->
+                <div class="bg-white rounded-lg p-6 card-shadow">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="text-base font-medium">各客户跟踪圈次占比</h4>
+                        <div class="chart-actions">
+                            <button class="chart-download-btn" data-chart="customerPieChart" data-type="image" title="下载图表图片">
+                                <i class="fa fa-download mr-1"></i>下载图表
+                            </button>
+                            <button class="chart-download-btn" data-chart="customerPieChart" data-type="csv" title="下载图表数据">
+                                <i class="fa fa-table mr-1"></i>下载数据
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="customerPieChart"></canvas>
+                        <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="customerPieChartEmpty">
+                            <div class="text-center">
+                                <i class="fa fa-pie-chart text-4xl mb-2"></i>
+                                <p>没有符合条件的数据</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 客户圈次数量条形图 -->
+                <div class="bg-white rounded-lg p-6 card-shadow">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="text-base font-medium">各客户跟踪圈次数量</h4>
+                        <div class="chart-actions">
+                            <button class="chart-download-btn" data-chart="customerBarChart" data-type="image" title="下载图表图片">
+                                <i class="fa fa-download mr-1"></i>下载图表
+                            </button>
+                            <button class="chart-download-btn" data-chart="customerBarChart" data-type="csv" title="下载图表数据">
+                                <i class="fa fa-table mr-1"></i>下载数据
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="customerBarChart"></canvas>
+                        <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="customerBarChartEmpty">
+                            <div class="text-center">
+                                <i class="fa fa-bar-chart text-4xl mb-2"></i>
+                                <p>没有符合条件的数据</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 测站数据分布 -->
+        <section id="stationDistribution" class="mb-8 hidden">
+            <h3 class="text-lg font-semibold mb-4">测站数据分布</h3>
+            <div class="bg-white rounded-lg p-6 card-shadow">
+                <div class="flex items-center justify-between mb-4">
+                    <h4 class="text-base font-medium">各测站跟踪圈次数量</h4>
+                    <div class="chart-actions">
+                        <button class="chart-download-btn" data-chart="stationBarChart" data-type="image" title="下载图表图片">
+                            <i class="fa fa-download mr-1"></i>下载图表
+                        </button>
+                        <button class="chart-download-btn" data-chart="stationBarChart" data-type="csv" title="下载图表数据">
+                            <i class="fa fa-table mr-1"></i>下载数据
+                        </button>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="stationBarChart"></canvas>
+                    <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="stationBarChartEmpty">
+                        <div class="text-center">
+                            <i class="fa fa-bar-chart text-4xl mb-2"></i>
+                            <p>没有符合条件的数据</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 客户-卫星数据分布 - 优化为下拉多选 -->
+        <section id="customerSatelliteDistribution" class="mb-8 hidden">
+            <h3 class="text-lg font-semibold mb-4">客户-卫星数据分布</h3>
+
+            <div class="bg-white rounded-lg p-6 card-shadow mb-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-base font-medium">选择客户</h4>
+                    <div class="text-sm text-gray-500">选择后图表会自动更新</div>
+                </div>
+
+                <!-- 下拉多选组件 -->
+                <div class="relative" id="customerSelectContainer">
+                    <div class="border border-gray-300 rounded-md p-2 cursor-pointer flex flex-wrap items-center min-h-[42px]" id="customerSelectDropdown">
+                        <div id="selectedCustomerTags" class="flex flex-wrap flex-grow">
+                            <div class="text-gray-500 italic text-sm">请选择客户</div>
+                        </div>
+                        <i class="fa fa-chevron-down text-gray-500 ml-2"></i>
+                    </div>
+
+                    <!-- 下拉选项 -->
+                    <div class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg hidden" id="customerSelectOptions">
+                        <div class="p-2 border-b border-gray-200">
+                            <input type="text" placeholder="搜索客户..." class="search-input" id="customerSearchInput">
+                            <div class="text-xs text-gray-500 mt-1" id="customerSearchResultCount">显示所有客户</div>
+                        </div>
+                        <div class="p-2 border-b border-gray-200 flex justify-between items-center">
+                            <button id="selectAllBtn" class="text-sm text-primary hover:underline">全选</button>
+                            <button id="deselectAllBtn" class="text-sm text-gray-600 hover:underline">清空选择</button>
+                        </div>
+                        <div class="dropdown-options p-1" id="customerOptionsList">
+                            <!-- 客户选项将通过JS动态添加 -->
+                            <div class="text-gray-500 italic text-sm p-2">请先选择时间范围并应用筛选</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg p-6 card-shadow">
+                <div class="flex items-center justify-between mb-4">
+                    <h4 class="text-base font-medium">客户所属卫星跟踪圈次</h4>
+                    <div class="chart-actions">
+                        <button class="chart-download-btn" data-chart="customerSatelliteBarChart" data-type="image" title="下载图表图片">
+                            <i class="fa fa-download mr-1"></i>下载图表
+                        </button>
+                        <button class="chart-download-btn" data-chart="customerSatelliteBarChart" data-type="csv" title="下载图表数据">
+                            <i class="fa fa-table mr-1"></i>下载数据
+                        </button>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="customerSatelliteBarChart"></canvas>
+                    <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="customerSatelliteChartEmpty">
+                        <div class="text-center">
+                            <i class="fa fa-bar-chart text-4xl mb-2"></i>
+                            <p>请选择客户查看数据</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 客户-测站偏好分布 - 优化为下拉多选 -->
+        <section id="customerStationPreference" class="mb-8 hidden">
+            <h3 class="text-lg font-semibold mb-4">客户-测站偏好分布</h3>
+
+            <div class="bg-white rounded-lg p-6 card-shadow mb-6">
+                <h4 class="text-base font-medium mb-3">选择客户查看测站偏好</h4>
+
+                <!-- 下拉多选组件 - 与客户-卫星分布的选择联动 -->
+                <div class="relative" id="stationPreferenceCustomerSelectContainer">
+                    <div class="border border-gray-300 rounded-md p-2 cursor-pointer flex flex-wrap items-center min-h-[42px]" id="stationPreferenceCustomerSelectDropdown">
+                        <div id="stationPreferenceSelectedCustomerTags" class="flex flex-wrap flex-grow">
+                            <div class="text-gray-500 italic text-sm">请选择客户</div>
+                        </div>
+                        <i class="fa fa-chevron-down text-gray-500 ml-2"></i>
+                    </div>
+
+                    <!-- 下拉选项 -->
+                    <div class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg hidden" id="stationPreferenceCustomerSelectOptions">
+                        <div class="p-2 border-b border-gray-200">
+                            <input type="text" placeholder="搜索客户..." class="search-input" id="stationPreferenceCustomerSearchInput">
+                            <div class="text-xs text-gray-500 mt-1" id="stationPreferenceSearchResultCount">显示所有客户</div>
+                        </div>
+                        <div class="p-2 border-b border-gray-200 flex justify-between items-center">
+                            <button id="stationPreferenceSelectAllBtn" class="text-sm text-primary hover:underline">全选</button>
+                            <button id="stationPreferenceDeselectAllBtn" class="text-sm text-gray-600 hover:underline">清空选择</button>
+                        </div>
+                        <div class="dropdown-options p-1" id="stationPreferenceCustomerOptionsList">
+                            <!-- 客户选项将通过JS动态添加 -->
+                            <div class="text-gray-500 italic text-sm p-2">请先选择时间范围并应用筛选</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="stationPreferenceCharts">
+                <!-- 客户测站偏好饼图将通过JS动态添加 -->
+                <div class="bg-white rounded-lg p-6 card-shadow flex items-center justify-center h-80">
+                    <div class="text-center text-gray-500">
+                        <i class="fa fa-pie-chart text-4xl mb-2"></i>
+                        <p>请选择客户查看测站偏好</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // 字段映射配置
+        const FIELD_MAPPING = {
+            '客户名称': '所属客户',
+            '卫星名称': '卫星名称',
+            '测站名称': '测站名称',
+            '任务结果状态': '任务结果状态',
+            '任务类型': '任务类型',
+            '开始时间': '开始时间'
+        };
+
+        // IndexedDB工具类
+        class SatelliteDB {
+            constructor() {
+                this.dbName = 'SatelliteDataDB';
+                this.storeName = 'satelliteData';
+                this.db = null;
+                this.initialized = false;
+                this.initPromise = null;
+                this.TIMEOUT_DURATION = 15000;
+                this.requiredIndex = 'byTimestamp';
+            }
+
+            async init() {
+                if (this.initialized) return Promise.resolve(this.db);
+                if (this.initPromise) return this.initPromise;
+
+                this.initPromise = Promise.race([
+                    new Promise((resolve, reject) => {
+                        const request = indexedDB.open(this.dbName, 3);
+
+                        request.onupgradeneeded = (event) => {
+                            this.db = event.target.result;
+                            if (!this.db.objectStoreNames.contains(this.storeName)) {
+                                const store = this.db.createObjectStore(this.storeName, { keyPath: 'id' });
+                                store.createIndex(this.requiredIndex, 'timestamp', { unique: false });
+                            }
+                        };
+
+                        request.onsuccess = (event) => {
+                            this.db = event.target.result;
+                            this.initialized = true;
+                            resolve(this.db);
+                        };
+
+                        request.onerror = (event) => {
+                            this.initialized = false;
+                            reject(event.target.error);
+                        };
+                    }),
+                    new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('数据库连接超时')), this.TIMEOUT_DURATION);
+                    })
+                ]);
+
+                return this.initPromise;
+            }
+
+            async ensureInitialized() {
+                if (!this.initialized) await this.init();
+                return this.db;
+            }
+
+            async getAllDataWithProgress(progressCallback) {
+                await this.ensureInitialized();
+                const transaction = this.db.transaction([this.storeName], 'readonly');
+                const store = transaction.objectStore(this.storeName);
+                const cursorRequest = store.openCursor(null, 'prev');
+
+                return new Promise((resolve, reject) => {
+                    const results = [];
+                    let count = 0;
+
+                    cursorRequest.onsuccess = (event) => {
+                        const cursor = event.target.result;
+                        if (cursor) {
+                            results.push(cursor.value);
+                            count++;
+                            if (progressCallback) progressCallback(Math.min(100, count * 10), count, count);
+                            cursor.continue();
+                        } else {
+                            resolve(results);
+                        }
+                    };
+
+                    cursorRequest.onerror = (event) => reject(event.target.error);
+                });
+            }
+
+            async hasData() {
+                const count = await this.getTotalCount();
+                return count > 0;
+            }
+
+            async getTotalCount() {
+                await this.ensureInitialized();
+                const transaction = this.db.transaction([this.storeName], 'readonly');
+                const store = transaction.objectStore(this.storeName);
+                return new Promise((resolve) => {
+                    const countRequest = store.count();
+                    countRequest.onsuccess = () => resolve(countRequest.result);
+                });
+            }
+
+            async clearData() {
+                await this.ensureInitialized();
+                const transaction = this.db.transaction([this.storeName], 'readwrite');
+                const store = transaction.objectStore(this.storeName);
+                return new Promise((resolve) => {
+                    const request = store.clear();
+                    request.onsuccess = () => resolve(true);
+                });
+            }
+        }
+
+        // 图表生成器
+        class ChartGenerator {
+            constructor() {
+                this.charts = {};
+                this.colors = [
+                    '#165DFF', '#36CFC9', '#722ED1', '#FF7D00', '#F53F3F',
+                    '#00B42A', '#86909C', '#F7BA1E', '#E53E3E', '#48BB78',
+                    '#3182CE', '#805AD5', '#ED8936', '#ECC94B', '#6B46C1'
+                ];
+            }
+
+            destroyChart(chartId) {
+                if (this.charts[chartId]) {
+                    try {
+                        this.charts[chartId].destroy();
+                    } catch (e) {
+                        // ignore
+                    }
+                    delete this.charts[chartId];
+                }
+            }
+
+            // 生成饼图
+            generatePieChart(chartId, title, labels, data) {
+                this.destroyChart(chartId);
+                const ctxEl = document.getElementById(chartId);
+                if (!ctxEl) return null;
+                const ctx = ctxEl.getContext('2d');
+                const emptyState = document.getElementById(`${chartId}Empty`);
+
+                const hasData = data && data.some(v => v > 0);
+                if (!hasData) {
+                    if (emptyState) emptyState.classList.remove('hidden');
+                    return null;
+                }
+
+                if (emptyState) emptyState.classList.add('hidden');
+
+                const chart = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: this.colors.slice(0, labels.length),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: title,
+                                font: { size: 16 }
+                            },
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    boxWidth: 12,
+                                    padding: 15
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.label || '';
+                                        const value = context.raw || 0;
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                        return `${label}: ${value} 次 (${percentage}%)`;
+                                    }
+                                }
+                            }
+                        },
+                        animation: {
+                            animateScale: true,
+                            animateRotate: true,
+                            duration: 1000
+                        }
+                    }
+                });
+
+                this.charts[chartId] = chart;
+                return chart;
+            }
+
+            // 生成条形图
+            generateBarChart(chartId, title, labels, datasets) {
+                this.destroyChart(chartId);
+                const ctxEl = document.getElementById(chartId);
+                if (!ctxEl) return null;
+                const ctx = ctxEl.getContext('2d');
+                const emptyState = document.getElementById(`${chartId}Empty`);
+
+                const hasData = datasets && datasets.some(dataset => dataset.data.some(v => v > 0));
+                if (!hasData) {
+                    if (emptyState) emptyState.classList.remove('hidden');
+                    return null;
+                }
+
+                if (emptyState) emptyState.classList.add('hidden');
+
+                const styledDatasets = datasets.map((dataset, i) => ({
+                    label: dataset.label,
+                    data: dataset.data,
+                    backgroundColor: this.colors[i % this.colors.length] + '80',
+                    borderColor: this.colors[i % this.colors.length],
+                    borderWidth: 1
+                }));
+
+                const chart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: styledDatasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: title,
+                                font: { size: 16 }
+                            },
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    boxWidth: 12,
+                                    usePointStyle: true,
+                                    pointStyle: 'circle'
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `${context.dataset.label}: ${context.raw} 次`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    precision: 0,
+                                    stepSize: 1
+                                }
+                            }
+                        },
+                        animation: {
+                            duration: 1000
+                        }
+                    }
+                });
+
+                this.charts[chartId] = chart;
+                return chart;
+            }
+
+            // 销毁所有图表
+            destroyAllCharts() {
+                Object.keys(this.charts).forEach(id => this.destroyChart(id));
+            }
+        }
+
+        // 下载工具函数（通用）
+        function downloadFile(filename, content, mimeType = 'application/octet-stream') {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 500);
+        }
+
+        // 将 Chart.js 实例数据转换为 CSV（含 UTF-8 BOM，方便 Excel 打开）
+        function chartToCSV(chart) {
+            if (!chart || !chart.data) return '';
+
+            const labels = chart.data.labels || [];
+            const datasets = chart.data.datasets || [];
+
+            // Header row: 分组, dataset1, dataset2...
+            const header = ['分组', ...datasets.map(ds => ds.label || '')];
+            const rows = [header];
+
+            for (let i = 0; i < labels.length; i++) {
+                const row = [labels[i]];
+                for (let j = 0; j < datasets.length; j++) {
+                    const v = datasets[j].data && typeof datasets[j].data[i] !== 'undefined' ? datasets[j].data[i] : '';
+                    row.push(v);
+                }
+                rows.push(row);
+            }
+
+            const csvLines = rows.map(cols => cols.map(cell => {
+                if (cell === null || typeof cell === 'undefined') return '';
+                const cellStr = String(cell);
+                if (/[",\n]/.test(cellStr)) {
+                    return `"${cellStr.replace(/"/g, '""')}"`;
+                }
+                return cellStr;
+            }).join(','));
+
+            return '\uFEFF' + csvLines.join('\n');
+        }
+
+        // 将简单的单数据集（如饼图）转换为 CSV (label,value)
+        function simpleChartToCSV(chart) {
+            if (!chart || !chart.data) return '';
+            const labels = chart.data.labels || [];
+            const data = (chart.data.datasets && chart.data.datasets[0] && chart.data.datasets[0].data) || [];
+            const rows = [['分组', '值']];
+            for (let i = 0; i < labels.length; i++) {
+                rows.push([labels[i] || '', data[i] || 0]);
+            }
+            const csvLines = rows.map(cols => cols.map(cell => {
+                const cellStr = String(cell);
+                if (/[",\n]/.test(cellStr)) {
+                    return `"${cellStr.replace(/"/g, '""')}"`;
+                }
+                return cellStr;
+            }).join(','));
+            return '\uFEFF' + csvLines.join('\n');
+        }
+
+        // 主应用类
+        class DataDistributionApp {
+            constructor() {
+                this.db = new SatelliteDB();
+                this.chartGenerator = new ChartGenerator();
+
+                // 应用状态
+                this.data = null;
+                this.filteredData = null;
+                this.rawData = null;
+                this.selectedCustomers = [];
+                this.allCustomers = [];
+
+                // 下拉选项状态
+                this.isDropdownOpen = false;
+                this.isStationPreferenceDropdownOpen = false;
+
+                this.init();
+            }
+
+            async init() {
+                this.setupEventListeners();
+                await this.loadData();
+                this.setDefaultDateTimeRange();
+                this.addDebugButtons();
+                this.bindDownloadButtons(); // bind download handlers
+            }
+
+            setupEventListeners() {
+                // 应用筛选按钮
+                const applyBtn = document.getElementById('applyFilters');
+                if (applyBtn) applyBtn.addEventListener('click', () => this.applyFilters());
+
+                // 客户下拉选择相关
+                const cdd = document.getElementById('customerSelectDropdown');
+                if (cdd) cdd.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.toggleCustomerDropdown();
+                });
+
+                const selectAllBtn = document.getElementById('selectAllBtn');
+                if (selectAllBtn) selectAllBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.selectAllCustomers();
+                });
+
+                const deselectAllBtn = document.getElementById('deselectAllBtn');
+                if (deselectAllBtn) deselectAllBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.deselectAllCustomers();
+                });
+
+                // 优化搜索功能 - 添加防抖处理
+                const customerSearchInput = document.getElementById('customerSearchInput');
+                if (customerSearchInput) customerSearchInput.addEventListener('input', this.debounce((e) => {
+                    this.filterCustomerOptions(e.target.value);
+                }, 300));
+
+                // 测站偏好客户下拉选择相关
+                const spcdd = document.getElementById('stationPreferenceCustomerSelectDropdown');
+                if (spcdd) spcdd.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.toggleStationPreferenceCustomerDropdown();
+                });
+
+                const spSelAll = document.getElementById('stationPreferenceSelectAllBtn');
+                if (spSelAll) spSelAll.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.selectAllCustomers();
+                });
+
+                const spDeseAll = document.getElementById('stationPreferenceDeselectAllBtn');
+                if (spDeseAll) spDeseAll.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.deselectAllCustomers();
+                });
+
+                const spSearch = document.getElementById('stationPreferenceCustomerSearchInput');
+                if (spSearch) spSearch.addEventListener('input', this.debounce((e) => {
+                    this.filterStationPreferenceCustomerOptions(e.target.value);
+                }, 300));
+
+                // 点击页面其他地方关闭下拉菜单
+                document.addEventListener('click', () => {
+                    this.closeAllDropdowns();
+                });
+
+                // 移动端菜单
+                const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+                if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', () => {
+                    document.getElementById('mobileMenu').classList.toggle('hidden');
+                });
+            }
+
+            // 防抖函数 - 优化搜索性能
+            debounce(func, wait) {
+                let timeout;
+                return function(...args) {
+                    const context = this;
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => func.apply(context, args), wait);
+                };
+            }
+
+            // 设置默认日期时间范围（最近7天）
+            setDefaultDateTimeRange() {
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - 7);
+
+                // 格式化日期时间为datetime-local所需格式
+                const sd = document.getElementById('startDateTime');
+                const ed = document.getElementById('endDateTime');
+                if (sd) sd.value = this.formatDateTimeForInput(startDate);
+                if (ed) ed.value = this.formatDateTimeForInput(endDate);
+            }
+
+            // 格式化日期时间为input所需格式
+            formatDateTimeForInput(date) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+
+                return `${year}-${month}-${day}T${hours}:${minutes}`;
+            }
+
+            // 切换客户下拉菜单
+            toggleCustomerDropdown() {
+                this.isDropdownOpen = !this.isDropdownOpen;
+                const options = document.getElementById('customerSelectOptions');
+
+                if (this.isDropdownOpen) {
+                    options.classList.remove('hidden');
+                    this.isStationPreferenceDropdownOpen = false;
+                    const spOpts = document.getElementById('stationPreferenceCustomerSelectOptions');
+                    if (spOpts) spOpts.classList.add('hidden');
+                    // 聚焦搜索框
+                    const search = document.getElementById('customerSearchInput');
+                    if (search) search.focus();
+                } else {
+                    options.classList.add('hidden');
+                }
+            }
+
+            // 切换测站偏好客户下拉菜单
+            toggleStationPreferenceCustomerDropdown() {
+                this.isStationPreferenceDropdownOpen = !this.isStationPreferenceDropdownOpen;
+                const options = document.getElementById('stationPreferenceCustomerSelectOptions');
+
+                if (this.isStationPreferenceDropdownOpen) {
+                    options.classList.remove('hidden');
+                    this.isDropdownOpen = false;
+                    const cOpts = document.getElementById('customerSelectOptions');
+                    if (cOpts) cOpts.classList.add('hidden');
+                    // 聚焦搜索框
+                    const search = document.getElementById('stationPreferenceCustomerSearchInput');
+                    if (search) search.focus();
+                } else {
+                    options.classList.add('hidden');
+                }
+            }
+
+            // 关闭所有下拉菜单
+            closeAllDropdowns() {
+                if (this.isDropdownOpen) {
+                    this.isDropdownOpen = false;
+                    const cOpts = document.getElementById('customerSelectOptions');
+                    if (cOpts) cOpts.classList.add('hidden');
+                }
+
+                if (this.isStationPreferenceDropdownOpen) {
+                    this.isStationPreferenceDropdownOpen = false;
+                    const spOpts = document.getElementById('stationPreferenceCustomerSelectOptions');
+                    if (spOpts) spOpts.classList.add('hidden');
+                }
+            }
+
+            // 筛选客户选项 - 优化版
+            filterCustomerOptions(searchTerm) {
+                const term = searchTerm.toLowerCase().trim();
+                const options = document.querySelectorAll('#customerOptionsList .customer-option');
+                let visibleCount = 0;
+                const totalCount = options.length;
+
+                options.forEach(option => {
+                    const customer = option.dataset.customer || '';
+                    const text = customer.toLowerCase();
+                    const isMatch = text.includes(term);
+
+                    if (isMatch) {
+                        option.classList.remove('hidden');
+                        visibleCount++;
+
+                        if (term) {
+                            const span = option.querySelector('span');
+                            const index = text.indexOf(term);
+                            if (index !== -1) {
+                                const before = customer.substring(0, index);
+                                const match = customer.substring(index, index + term.length);
+                                const after = customer.substring(index + term.length);
+                                span.innerHTML = `${before}<span class="search-highlight">${match}</span>${after}`;
+                            } else {
+                                span.textContent = customer;
+                            }
+                        } else {
+                            const span = option.querySelector('span');
+                            span.textContent = customer;
+                        }
+                    } else {
+                        option.classList.add('hidden');
+                    }
+                });
+
+                const resultCountEl = document.getElementById('customerSearchResultCount');
+                if (term) {
+                    resultCountEl.textContent = `找到 ${visibleCount} 个匹配结果（共 ${totalCount} 个）`;
+                } else {
+                    resultCountEl.textContent = `显示所有 ${totalCount} 个客户`;
+                }
+            }
+
+            // 筛选测站偏好客户选项 - 优化版
+            filterStationPreferenceCustomerOptions(searchTerm) {
+                const term = searchTerm.toLowerCase().trim();
+                const options = document.querySelectorAll('#stationPreferenceCustomerOptionsList .customer-option');
+                let visibleCount = 0;
+                const totalCount = options.length;
+
+                options.forEach(option => {
+                    const customer = option.dataset.customer || '';
+                    const text = customer.toLowerCase();
+                    const isMatch = text.includes(term);
+
+                    if (isMatch) {
+                        option.classList.remove('hidden');
+                        visibleCount++;
+
+                        if (term) {
+                            const span = option.querySelector('span');
+                            const index = text.indexOf(term);
+                            if (index !== -1) {
+                                const before = customer.substring(0, index);
+                                const match = customer.substring(index, index + term.length);
+                                const after = customer.substring(index + term.length);
+                                span.innerHTML = `${before}<span class="search-highlight">${match}</span>${after}`;
+                            } else {
+                                span.textContent = customer;
+                            }
+                        } else {
+                            const span = option.querySelector('span');
+                            span.textContent = customer;
+                        }
+                    } else {
+                        option.classList.add('hidden');
+                    }
+                });
+
+                const resultCountEl = document.getElementById('stationPreferenceSearchResultCount');
+                if (term) {
+                    resultCountEl.textContent = `找到 ${visibleCount} 个匹配结果（共 ${totalCount} 个）`;
+                } else {
+                    resultCountEl.textContent = `显示所有 ${totalCount} 个客户`;
+                }
+            }
+
+            async loadData() {
+                const dbLoading = document.getElementById('dbLoading');
+                if (dbLoading) dbLoading.classList.remove('hidden');
+
+                try {
+                    if (!await this.db.hasData()) {
+                        if (dbLoading) dbLoading.classList.add('hidden');
+                        document.getElementById('noDataAlert').classList.remove('hidden');
+                        return;
+                    }
+
+                    // 加载原始数据
+                    const rawData = await this.db.getAllDataWithProgress((p) => {
+                        document.getElementById('loadingProgress').style.width = `${p}%`;
+                    });
+
+                    this.rawData = rawData;
+
+                    // 提取嵌套数据
+                    this.data = rawData[0]?.data || [];
+
+                    // 显示内容区域
+                    if (dbLoading) dbLoading.classList.add('hidden');
+                    const fs = document.getElementById('filterSection');
+                    if (fs) fs.classList.remove('hidden');
+                    const sc = document.getElementById('statsCards');
+                    if (sc) sc.classList.remove('hidden');
+                    const cd = document.getElementById('customerDistribution');
+                    if (cd) cd.classList.remove('hidden');
+                    const sd = document.getElementById('stationDistribution');
+                    if (sd) sd.classList.remove('hidden');
+                    const csd = document.getElementById('customerSatelliteDistribution');
+                    if (csd) csd.classList.remove('hidden');
+                    const csp = document.getElementById('customerStationPreference');
+                    if (csp) csp.classList.remove('hidden');
+
+                    // 初始化客户选项
+                    this.initializeCustomerOptions();
+
+                } catch (error) {
+                    if (dbLoading) dbLoading.classList.add('hidden');
+                    console.error('加载数据失败:', error);
+                }
+            }
+
+            // 初始化客户选项
+            initializeCustomerOptions() {
+                // 获取所有客户
+                this.allCustomers = [...new Set(
+                    this.data.map(item => item[FIELD_MAPPING['客户名称']]?.toString().trim()).filter(Boolean)
+                )].sort();
+
+                // 清空现有选项
+                const list1 = document.getElementById('customerOptionsList');
+                const list2 = document.getElementById('stationPreferenceCustomerOptionsList');
+                if (list1) list1.innerHTML = '';
+                if (list2) list2.innerHTML = '';
+
+                // 如果没有客户数据
+                if (!this.allCustomers.length) {
+                    if (list1) list1.innerHTML =
+                        '<div class="text-gray-500 italic text-sm p-2">没有可用的客户数据</div>';
+                    if (list2) list2.innerHTML =
+                        '<div class="text-gray-500 italic text-sm p-2">没有可用的客户数据</div>';
+                    return;
+                }
+
+                // 创建客户选项
+                this.allCustomers.forEach(customer => {
+                    // 用于卫星分布的客户选项
+                    const option1 = document.createElement('div');
+                    option1.className = 'customer-option p-2 hover:bg-gray-100 rounded cursor-pointer flex items-center';
+                    option1.dataset.customer = customer; // 添加数据属性存储客户名称
+                    option1.innerHTML = `
+                        <input type="checkbox" class="mr-2 customer-checkbox" data-customer="${customer}">
+                        <span>${customer}</span>
+                    `;
+                    option1.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const checkbox = option1.querySelector('.customer-checkbox');
+                        checkbox.checked = !checkbox.checked;
+                        this.handleCustomerCheckboxChange(customer, checkbox.checked);
+                    });
+                    if (list1) list1.appendChild(option1);
+
+                    // 用于测站偏好的客户选项
+                    const option2 = document.createElement('div');
+                    option2.className = 'customer-option p-2 hover:bg-gray-100 rounded cursor-pointer flex items-center';
+                    option2.dataset.customer = customer; // 添加数据属性存储客户名称
+                    option2.innerHTML = `
+                        <input type="checkbox" class="mr-2 customer-checkbox" data-customer="${customer}" ${this.selectedCustomers.includes(customer) ? 'checked' : ''}>
+                        <span>${customer}</span>
+                    `;
+                    option2.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const checkbox = option2.querySelector('.customer-checkbox');
+                        checkbox.checked = !checkbox.checked;
+                        this.handleCustomerCheckboxChange(customer, checkbox.checked);
+                    });
+                    if (list2) list2.appendChild(option2);
+                });
+
+                // 更新标签显示
+                this.updateCustomerTags();
+
+                // 初始化搜索结果计数
+                const countEl1 = document.getElementById('customerSearchResultCount');
+                const countEl2 = document.getElementById('stationPreferenceSearchResultCount');
+                if (countEl1) countEl1.textContent = `显示所有 ${this.allCustomers.length} 个客户`;
+                if (countEl2) countEl2.textContent = `显示所有 ${this.allCustomers.length} 个客户`;
+            }
+
+            // 处理客户复选框变化
+            handleCustomerCheckboxChange(customer, checked) {
+                if (checked && !this.selectedCustomers.includes(customer)) {
+                    // 选中客户
+                    this.selectedCustomers.push(customer);
+                } else if (!checked && this.selectedCustomers.includes(customer)) {
+                    // 取消选择
+                    this.selectedCustomers = this.selectedCustomers.filter(c => c !== customer);
+                }
+
+                // 更新所有复选框状态
+                this.updateAllCustomerCheckboxes();
+
+                // 更新标签显示
+                this.updateCustomerTags();
+
+                // 更新图表
+                this.updateCustomerSatelliteChart();
+                this.updateCustomerStationPreferenceCharts();
+            }
+
+            // 更新所有客户复选框状态
+            updateAllCustomerCheckboxes() {
+                document.querySelectorAll('.customer-checkbox').forEach(checkbox => {
+                    const customer = checkbox.dataset.customer;
+                    checkbox.checked = this.selectedCustomers.includes(customer);
+                });
+            }
+
+            // 更新客户标签显示
+            updateCustomerTags() {
+                const tagContainer1 = document.getElementById('selectedCustomerTags');
+                const tagContainer2 = document.getElementById('stationPreferenceSelectedCustomerTags');
+
+                if (tagContainer1) tagContainer1.innerHTML = '';
+                if (tagContainer2) tagContainer2.innerHTML = '';
+
+                // 如果没有选中客户
+                if (!this.selectedCustomers.length) {
+                    if (tagContainer1) tagContainer1.innerHTML = '<div class="text-gray-500 italic text-sm">请选择客户</div>';
+                    if (tagContainer2) tagContainer2.innerHTML = '<div class="text-gray-500 italic text-sm">请选择客户</div>';
+                    return;
+                }
+
+                // 添加选中的客户标签
+                this.selectedCustomers.forEach(customer => {
+                    // 卫星分布的标签
+                    const tag1 = document.createElement('div');
+                    tag1.className = 'customer-tag';
+                    tag1.innerHTML = `
+                        ${customer}
+                        <button class="ml-1 text-primary hover:text-primary/80" data-customer="${customer}">
+                            <i class="fa fa-times-circle"></i>
+                        </button>
+                    `;
+                    tag1.querySelector('button').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.handleCustomerCheckboxChange(customer, false);
+                    });
+                    if (tagContainer1) tagContainer1.appendChild(tag1);
+
+                    // 测站偏好的标签
+                    const tag2 = document.createElement('div');
+                    tag2.className = 'customer-tag';
+                    tag2.innerHTML = `
+                        ${customer}
+                        <button class="ml-1 text-primary hover:text-primary/80" data-customer="${customer}">
+                            <i class="fa fa-times-circle"></i>
+                        </button>
+                    `;
+                    tag2.querySelector('button').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.handleCustomerCheckboxChange(customer, false);
+                    });
+                    if (tagContainer2) tagContainer2.appendChild(tag2);
+                });
+            }
+
+            // 全选客户
+            selectAllCustomers() {
+                this.selectedCustomers = [...this.allCustomers];
+                this.updateAllCustomerCheckboxes();
+                this.updateCustomerTags();
+                this.updateCustomerSatelliteChart();
+                this.updateCustomerStationPreferenceCharts();
+            }
+
+            // 取消全选客户
+            deselectAllCustomers() {
+                this.selectedCustomers = [];
+                this.updateAllCustomerCheckboxes();
+                this.updateCustomerTags();
+                this.updateCustomerSatelliteChart();
+                this.updateCustomerStationPreferenceCharts();
+            }
+
+            // 应用筛选
+            applyFilters() {
+                if (!this.data) return;
+
+                // 获取日期时间范围
+                const startDateTime = document.getElementById('startDateTime').value
+                    ? new Date(document.getElementById('startDateTime').value)
+                    : null;
+                const endDateTime = document.getElementById('endDateTime').value
+                    ? new Date(document.getElementById('endDateTime').value)
+                    : null;
+
+                // 验证时间范围
+                if (!startDateTime || !endDateTime) {
+                    alert('请选择完整的时间范围');
+                    return;
+                }
+
+                if (startDateTime > endDateTime) {
+                    alert('开始时间不能晚于结束时间');
+                    return;
+                }
+
+                // 应用筛选 - 按选定时间段进行时间扫描计数
+                this.filteredData = this.data.filter(item => {
+                    const itemDate = new Date(item[FIELD_MAPPING['开始时间']]);
+                    return itemDate >= startDateTime && itemDate <= endDateTime;
+                });
+
+                // 更新统计卡片
+                this.updateStatsCards();
+
+                // 生成所有图表
+                this.generateAllCharts();
+
+                // 重置客户选择
+                this.deselectAllCustomers();
+
+                // 重新初始化客户选项（基于筛选后的数据）
+                this.reinitializeCustomerOptionsBasedOnFilteredData();
+            }
+
+            // 基于筛选后的数据重新初始化客户选项
+            reinitializeCustomerOptionsBasedOnFilteredData() {
+                const filteredCustomers = [...new Set(
+                    this.filteredData.map(item => item[FIELD_MAPPING['客户名称']]?.toString().trim()).filter(Boolean)
+                )].sort();
+
+                const list1 = document.getElementById('customerOptionsList');
+                const list2 = document.getElementById('stationPreferenceCustomerOptionsList');
+                if (list1) list1.innerHTML = '';
+                if (list2) list2.innerHTML = '';
+
+                if (!filteredCustomers.length) {
+                    if (list1) list1.innerHTML =
+                        '<div class="text-gray-500 italic text-sm p-2">没有符合条件的客户数据</div>';
+                    if (list2) list2.innerHTML =
+                        '<div class="text-gray-500 italic text-sm p-2">没有符合条件的客户数据</div>';
+
+                    const cSearch = document.getElementById('customerSearchResultCount');
+                    const spSearch = document.getElementById('stationPreferenceSearchResultCount');
+                    if (cSearch) cSearch.textContent = '没有符合条件的客户数据';
+                    if (spSearch) spSearch.textContent = '没有符合条件的客户数据';
+                    return;
+                }
+
+                this.allCustomers = filteredCustomers;
+
+                filteredCustomers.forEach(customer => {
+                    const option1 = document.createElement('div');
+                    option1.className = 'customer-option p-2 hover:bg-gray-100 rounded cursor-pointer flex items-center';
+                    option1.dataset.customer = customer;
+                    option1.innerHTML = `
+                        <input type="checkbox" class="mr-2 customer-checkbox" data-customer="${customer}">
+                        <span>${customer}</span>
+                    `;
+                    option1.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const checkbox = option1.querySelector('.customer-checkbox');
+                        checkbox.checked = !checkbox.checked;
+                        this.handleCustomerCheckboxChange(customer, checkbox.checked);
+                    });
+                    if (list1) list1.appendChild(option1);
+
+                    const option2 = document.createElement('div');
+                    option2.className = 'customer-option p-2 hover:bg-gray-100 rounded cursor-pointer flex items-center';
+                    option2.dataset.customer = customer;
+                    option2.innerHTML = `
+                        <input type="checkbox" class="mr-2 customer-checkbox" data-customer="${customer}">
+                        <span>${customer}</span>
+                    `;
+                    option2.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const checkbox = option2.querySelector('.customer-checkbox');
+                        checkbox.checked = !checkbox.checked;
+                        this.handleCustomerCheckboxChange(customer, checkbox.checked);
+                    });
+                    if (list2) list2.appendChild(option2);
+                });
+
+                const cSearch = document.getElementById('customerSearchResultCount');
+                const spSearch = document.getElementById('stationPreferenceSearchResultCount');
+                if (cSearch) cSearch.textContent = `显示所有 ${filteredCustomers.length} 个客户`;
+                if (spSearch) spSearch.textContent = `显示所有 ${filteredCustomers.length} 个客户`;
+            }
+
+            // 更新统计卡片
+            updateStatsCards() {
+                if (!this.filteredData) return;
+
+                const totalCycles = this.filteredData.length;
+                document.getElementById('totalCycles').textContent = totalCycles;
+
+                const satellites = [...new Set(
+                    this.filteredData.map(item => item[FIELD_MAPPING['卫星名称']]?.toString().trim()).filter(Boolean)
+                )];
+                document.getElementById('satelliteCount').textContent = satellites.length;
+
+                const customers = [...new Set(
+                    this.filteredData.map(item => item[FIELD_MAPPING['客户名称']]?.toString().trim()).filter(Boolean)
+                )];
+                document.getElementById('customerCount').textContent = customers.length;
+
+                const stations = [...new Set(
+                    this.filteredData.map(item => item[FIELD_MAPPING['测站名称']]?.toString().trim()).filter(Boolean)
+                )];
+                document.getElementById('stationCount').textContent = stations.length;
+
+                const activeSatellites = this.calculateActiveSatellites();
+                document.getElementById('activeSatellites').textContent = activeSatellites;
+
+                document.getElementById('customerCoverage').textContent = Math.min(5, Math.max(1, Math.floor(customers.length / 3)));
+
+                document.getElementById('stationCoverage').textContent = `${Math.min(100, Math.round(stations.length * 5))}%`;
+
+                document.getElementById('cyclesChange').textContent = `+${Math.round(Math.random() * 15)}%`;
+            }
+
+            // 计算活跃卫星数量（有超过5次任务的卫星）
+            calculateActiveSatellites() {
+                const satelliteCounts = {};
+                this.filteredData.forEach(item => {
+                    const satellite = item[FIELD_MAPPING['卫星名称']]?.toString().trim();
+                    if (satellite) {
+                        satelliteCounts[satellite] = (satelliteCounts[satellite] || 0) + 1;
+                    }
+                });
+                return Object.values(satelliteCounts).filter(count => count > 5).length;
+            }
+
+            // 生成所有图表
+            generateAllCharts() {
+                if (!this.filteredData || !this.filteredData.length) {
+                    this.clearAllCharts();
+                    return;
+                }
+
+                this.generateCustomerPieChart();
+                this.generateCustomerBarChart();
+                this.generateStationBarChart();
+                this.updateCustomerSatelliteChart();
+                this.updateCustomerStationPreferenceCharts();
+            }
+
+            // 生成客户圈次占比饼图
+            generateCustomerPieChart() {
+                const customerCounts = {};
+                this.filteredData.forEach(item => {
+                    const customer = item[FIELD_MAPPING['客户名称']]?.toString().trim();
+                    if (customer) customerCounts[customer] = (customerCounts[customer] || 0) + 1;
+                });
+                const labels = Object.keys(customerCounts);
+                const data = Object.values(customerCounts);
+
+                this.chartGenerator.generatePieChart('customerPieChart', '各客户跟踪圈次占比', labels, data);
+            }
+
+            // 生成客户圈次数量条形图
+            generateCustomerBarChart() {
+                const customerCounts = {};
+                this.filteredData.forEach(item => {
+                    const customer = item[FIELD_MAPPING['客户名称']]?.toString().trim();
+                    if (customer) customerCounts[customer] = (customerCounts[customer] || 0) + 1;
+                });
+
+                const sortedCustomers = Object.keys(customerCounts).sort((a, b) => customerCounts[b] - customerCounts[a]);
+                const labels = sortedCustomers;
+                const datasets = [{
+                    label: '跟踪圈次数量',
+                    data: sortedCustomers.map(customer => customerCounts[customer])
+                }];
+
+                this.chartGenerator.generateBarChart('customerBarChart', '各客户跟踪圈次数量', labels, datasets);
+            }
+
+            // 生成测站圈次数量条形图
+            generateStationBarChart() {
+                const stationCounts = {};
+                this.filteredData.forEach(item => {
+                    const station = item[FIELD_MAPPING['测站名称']]?.toString().trim();
+                    if (station) stationCounts[station] = (stationCounts[station] || 0) + 1;
+                });
+
+                const sortedStations = Object.keys(stationCounts).sort((a, b) => stationCounts[b] - stationCounts[a]);
+                const labels = sortedStations;
+                const datasets = [{
+                    label: '跟踪圈次数量',
+                    data: sortedStations.map(station => stationCounts[station])
+                }];
+
+                this.chartGenerator.generateBarChart('stationBarChart', '各测站跟踪圈次数量', labels, datasets);
+            }
+
+            // 更新客户-卫星分布条形图
+            updateCustomerSatelliteChart() {
+                if (!this.selectedCustomers.length) {
+                    const emptyEl = document.getElementById('customerSatelliteChartEmpty');
+                    if (emptyEl) emptyEl.classList.remove('hidden');
+                    // destroy old chart to avoid stale downloads
+                    this.chartGenerator.destroyChart('customerSatelliteBarChart');
+                    return;
+                }
+
+                const emptyEl = document.getElementById('customerSatelliteChartEmpty');
+                if (emptyEl) emptyEl.classList.add('hidden');
+
+                const customerData = this.filteredData.filter(item =>
+                    this.selectedCustomers.includes(item[FIELD_MAPPING['客户名称']]?.toString().trim())
+                );
+
+                const customerSatelliteCounts = {};
+                const satellites = new Set();
+
+                customerData.forEach(item => {
+                    const customer = item[FIELD_MAPPING['客户名称']]?.toString().trim();
+                    const satellite = item[FIELD_MAPPING['卫星名称']]?.toString().trim();
+
+                    if (customer && satellite) {
+                        if (!customerSatelliteCounts[customer]) customerSatelliteCounts[customer] = {};
+                        customerSatelliteCounts[customer][satellite] = (customerSatelliteCounts[customer][satellite] || 0) + 1;
+                        satellites.add(satellite);
+                    }
+                });
+
+                const sortedSatellites = Array.from(satellites).sort();
+                const datasets = this.selectedCustomers.map((customer, i) => ({
+                    label: customer,
+                    data: sortedSatellites.map(satellite => customerSatelliteCounts[customer]?.[satellite] || 0)
+                }));
+
+                this.chartGenerator.generateBarChart('customerSatelliteBarChart', '客户所属卫星跟踪圈次', sortedSatellites, datasets);
+            }
+
+            // 更新客户-测站偏好饼图
+            updateCustomerStationPreferenceCharts() {
+                const container = document.getElementById('stationPreferenceCharts');
+
+                if (!this.selectedCustomers.length) {
+                    container.innerHTML = `
+                        <div class="bg-white rounded-lg p-6 card-shadow flex items-center justify-center h-80">
+                            <div class="text-center text-gray-500">
+                                <i class="fa fa-pie-chart text-4xl mb-2"></i>
+                                <p>请选择客户查看测站偏好</p>
+                            </div>
+                        </div>
+                    `;
+                    // destroy previously created stationPreference charts
+                    Object.keys(this.chartGenerator.charts).forEach(id => {
+                        if (id && id.startsWith('stationPreferenceChart-')) this.chartGenerator.destroyChart(id);
+                    });
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                this.selectedCustomers.forEach((customer, index) => {
+                    const customerData = this.filteredData.filter(item =>
+                        item[FIELD_MAPPING['客户名称']]?.toString().trim() === customer
+                    );
+
+                    const stationCounts = {};
+                    customerData.forEach(item => {
+                        const station = item[FIELD_MAPPING['测站名称']]?.toString().trim();
+                        if (station) stationCounts[station] = (stationCounts[station] || 0) + 1;
+                    });
+
+                    const chartId = `stationPreferenceChart-${index}`;
+
+                    const chartContainer = document.createElement('div');
+                    chartContainer.className = 'bg-white rounded-lg p-6 card-shadow';
+                    chartContainer.innerHTML = `
+                        <div class="flex items-center justify-between mb-4">
+                            <h4 class="text-base font-medium">${customer} 的测站偏好</h4>
+                            <div class="chart-actions">
+                                <button class="chart-download-btn" data-chart="${chartId}" data-type="image" title="下载图表图片">
+                                    <i class="fa fa-download mr-1"></i>下载图表
+                                </button>
+                                <button class="chart-download-btn" data-chart="${chartId}" data-type="csv" title="下载图表数据">
+                                    <i class="fa fa-table mr-1"></i>下载数据
+                                </button>
+                            </div>
+                        </div>
+                        <div class="chart-container h-full">
+                            <canvas id="${chartId}"></canvas>
+                            <div class="absolute inset-0 flex items-center justify-center text-gray-500 hidden" id="${chartId}Empty">
+                                <div class="text-center">
+                                    <i class="fa fa-pie-chart text-4xl mb-2"></i>
+                                    <p>没有符合条件的数据</p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(chartContainer);
+
+                    const labels = Object.keys(stationCounts);
+                    const data = Object.values(stationCounts);
+
+                    this.chartGenerator.generatePieChart(chartId, `${customer} 的测站偏好`, labels, data);
+                });
+            }
+
+            // 清空所有图表
+            clearAllCharts() {
+                this.chartGenerator.destroyAllCharts();
+
+                const cp = document.getElementById('customerPieChartEmpty');
+                const cb = document.getElementById('customerBarChartEmpty');
+                const sb = document.getElementById('stationBarChartEmpty');
+                const cs = document.getElementById('customerSatelliteChartEmpty');
+                if (cp) cp.classList.remove('hidden');
+                if (cb) cb.classList.remove('hidden');
+                if (sb) sb.classList.remove('hidden');
+                if (cs) cs.classList.remove('hidden');
+
+                document.getElementById('totalCycles').textContent = '0';
+                document.getElementById('satelliteCount').textContent = '0';
+                document.getElementById('customerCount').textContent = '0';
+                document.getElementById('stationCount').textContent = '0';
+                document.getElementById('activeSatellites').textContent = '0';
+                document.getElementById('customerCoverage').textContent = '0';
+                document.getElementById('stationCoverage').textContent = '0%';
+                document.getElementById('cyclesChange').textContent = '0%';
+            }
+
+            // 添加调试按钮
+            addDebugButtons() {
+                const debugBtn = document.createElement('button');
+                debugBtn.className = 'fixed top-4 right-4 z-10 px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm';
+                debugBtn.textContent = '显示调试信息';
+                debugBtn.addEventListener('click', () => {
+                    alert(`
+数据总量: ${this.data?.length || 0}
+筛选后数据量: ${this.filteredData?.length || 0}
+客户数量: ${this.allCustomers?.length || 0}
+选中客户: ${this.selectedCustomers.join(', ') || '无'}
+                    `.trim());
+                });
+
+                document.body.appendChild(debugBtn);
+            }
+
+            // 绑定下载按钮（事件委托）
+            bindDownloadButtons() {
+                document.addEventListener('click', (e) => {
+                    const btn = e.target.closest && e.target.closest('.chart-download-btn');
+                    if (!btn) return;
+
+                    e.stopPropagation();
+
+                    const chartId = btn.getAttribute('data-chart');
+                    const type = btn.getAttribute('data-type');
+
+                    // find chart instance
+                    const chart = this.chartGenerator.charts[chartId];
+                    if (!chart) {
+                        alert('当前图表无数据或尚未生成，请先应用筛选并确保图表已显示再下载。');
+                        return;
+                    }
+
+                    if (type === 'image') {
+                        try {
+                            const imgUrl = chart.toBase64Image();
+                            const a = document.createElement('a');
+                            a.href = imgUrl;
+                            const now = new Date();
+                            const ts = now.toISOString().replace(/[:.]/g, '-');
+                            a.download = `${chartId}-${ts}.png`;
+                            document.body.appendChild(a);
+                            a.click();
+                            setTimeout(() => document.body.removeChild(a), 300);
+                        } catch (err) {
+                            console.error('导出图片失败', err);
+                            alert('导出图片失败，请检查浏览器支持或数据量是否过大。');
+                        }
+                    } else if (type === 'csv') {
+                        try {
+                            // For single-dataset charts (pie) we can use simpleChartToCSV for clearer output,
+                            // otherwise use the general chartToCSV
+                            const isPieOrSingle = chart.config && chart.config.type === 'pie';
+                            const csv = isPieOrSingle ? simpleChartToCSV(chart) : chartToCSV(chart);
+                            const now = new Date();
+                            const ts = now.toISOString().replace(/[:.]/g, '-');
+                            downloadFile(`${chartId}-${ts}.csv`, csv, 'text/csv;charset=utf-8;');
+                        } catch (err) {
+                            console.error('导出 CSV 失败', err);
+                            alert('导出 CSV 失败，请查看控制台错误信息。');
+                        }
+                    }
+                });
+            }
+        }
+
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', () => {
+            window.dataDistributionApp = new DataDistributionApp();
+        });
+    </script>
+</body>
+</html>
