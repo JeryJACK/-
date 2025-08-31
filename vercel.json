@@ -11,7 +11,9 @@
   },
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/auth/(.*)", "dest": "/auth/$1" },
+    { "src": "/auth/login.html", "dest": "/auth/login.html" },
+    { "src": "/auth/dashboard.html", "dest": "/auth/dashboard.html" },
+    { "src": "/auth/js/(.*)", "dest": "/auth/js/$1" },
     { "src": "/(.*)", "dest": "/public/$1" }
   ]
 }
