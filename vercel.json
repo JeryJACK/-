@@ -1,0 +1,17 @@
+{
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "buildCommand": "echo 'No build needed'",
+  "outputDirectory": ".",
+  "functions": {
+    "api/*.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/auth/(.*)", "dest": "/auth/$1" },
+    { "src": "/(.*)", "dest": "/public/$1" }
+  ]
+}
