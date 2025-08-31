@@ -1,19 +1,26 @@
 {
-  "env": {
-    "NODE_ENV": "production"
-  },
-  "buildCommand": "echo 'No build needed'",
-  "outputDirectory": ".",
-  "functions": {
-    "api/*.js": {
-      "runtime": "nodejs18.x"
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "buildCommand": "echo 'No build needed'",
+      "outputDirectory": ".",
+      "functions": {
+        "api/*.js": {
+          "runtime": "nodejs18.x"
+        }
+      },
+      "routes": [
+        // 匹配API所有路径（包括子路径），强制大小写
+        { "src": "/api/.*", "dest": "/api/$1" },
+        // 匹配auth目录下所有HTML和JS文件
+        { "src": "/auth/([^/]+)\\.html", "dest": "/auth/$1.html" },
+        { "src": "/auth/js/([^/]+)\\.js", "dest": "/auth/js/$1.js" },
+        // 匹配public目录下所有文件（首页、静态资源等）
+        { "src": "/([^/]+)\\.html", "dest": "/public/$1.html" },
+        { "src": "/js/([^/]+)\\.js", "dest": "/public/js/$1.js" },
+        // 首页特殊处理
+        { "src": "/", "dest": "/public/index.html" },
+        // 兜底规则（匹配未被上述规则覆盖的路径）
+        { "src": "/(.*)", "dest": "/public/$1" }
+      ]
     }
-  },
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/auth/login.html", "dest": "/auth/login.html" },
-    { "src": "/auth/dashboard.html", "dest": "/auth/dashboard.html" },
-    { "src": "/auth/js/(.*)", "dest": "/auth/js/$1" },
-    { "src": "/(.*)", "dest": "/public/$1" }
-  ]
-}
