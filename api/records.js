@@ -1,4 +1,4 @@
-const{pool}-require('pg');
+<const{pool}-require('pg');
 const { verifyAuth } = require('../lib/auth');
 
 let pool;
